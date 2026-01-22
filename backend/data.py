@@ -40,7 +40,7 @@ async def fetch_ticketmaster_events(
     total_pages = 1
 
     try:
-        async with httpx.AsyncClient(timeout=15.0) as client:
+        async with httpx.AsyncClient(timeout=20.0) as client:
             while page < total_pages:
                 params = {**base_params, "page": page}
                 print(f"Fetching Ticketmaster events - page {page + 1}/{total_pages} with params:", params)
@@ -74,11 +74,9 @@ async def fetch_ticketmaster_events(
             }
     except httpx.HTTPError as e:
         raise Exception(f"Failed to fetch Ticketmaster events: {str(e)}")
-    
 
 
-
-async def fetch_sf_ticketmaster_events(
+async def fetch_bay_area_ticketmaster_events(
     keyword: Optional[str] = None,
     start_date_time: Optional[str] = None,
     end_date_time: Optional[str] = None,
@@ -88,27 +86,27 @@ async def fetch_sf_ticketmaster_events(
     Returns:
         List of event dictionaries normalized to common format
     """
-    print("start_date_time:", start_date_time)
-    print("end_date_time:", end_date_time)
-    response = await fetch_ticketmaster_events(
-        
-        city="Los Angeles",
-        state_code="CA",
-        keyword=keyword,
-        start_date_time=start_date_time,
-        end_date_time=end_date_time,
-    )
-    
-    # Normalize to common event format
+
+    bay_area_cities = ["San Francisco", "Oakland", "San Jose", "Berkeley", "Palo Alto", "Mountain View"]
     events = []
-    embedded = response.get("_embedded", {})
-    raw_events = embedded.get("events", [])
-    
-    for event in raw_events:
-        # Extract venue information
-        normalized_event = normalize_ticketmaster_event(event)
-        events.append(normalized_event)
-        
+    for city in bay_area_cities:
+        response = await fetch_ticketmaster_events(
+            city=city,
+            state_code="CA",
+            keyword=keyword,
+            start_date_time=start_date_time,
+            end_date_time=end_date_time,
+        )
+
+        embedded = response.get("_embedded", {})
+        raw_events = embedded.get("events", [])
+
+        print(f"{city}: {len(raw_events)} raw events")
+
+        for event in raw_events:
+            normalized_event = normalize_ticketmaster_event(event)
+            events.append(normalized_event)
+
     return events
 
 
@@ -136,7 +134,7 @@ def normalize_ticketmaster_event(event: Dict[str, Any]) -> Dict[str, Any]:
         "url": event.get("url"),
         "description": event.get("info") or event.get("pleaseNote"),
         "source": "Ticketmaster",
-        # "raw_data": event,  # Keep original data for reference
+        #"raw_data": event,  # Keep original data for reference
     }
     return normalized_event
 

@@ -23,7 +23,7 @@ from lxml import html
 from pydantic import BaseModel
 
 from scraping import test_scraping
-from data import fetch_sf_ticketmaster_events, fetch_ticketmaster_events
+from data import fetch_bay_area_ticketmaster_events
 
 
 # Load environment variables from .env file
@@ -114,7 +114,7 @@ async def get_ticketmaster_events(
         end_date = (datetime.now() + timedelta(days=30)).strftime("%Y-%m-%dT23:59:59Z")
 
     try:
-        events = await fetch_sf_ticketmaster_events(
+        events = await fetch_bay_area_ticketmaster_events(
             
             keyword=keyword,
             start_date_time=start_date,
