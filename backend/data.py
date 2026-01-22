@@ -87,7 +87,7 @@ async def fetch_bay_area_ticketmaster_events(
         List of event dictionaries normalized to common format
     """
 
-    bay_area_cities = ["San Francisco", "Oakland", "San Jose", "Berkeley", "Palo Alto", "Mountain View"]
+    bay_area_cities = ["San Francisco", "Oakland", "San Jose", "Berkeley", "Palo Alto", "Campbell"]
     events = []
     for city in bay_area_cities:
         response = await fetch_ticketmaster_events(
