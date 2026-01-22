@@ -124,16 +124,13 @@ async def get_ticketmaster_events(
     start_date: Optional[str] = None,
     end_date: Optional[str] = None,
 ):
-    "Fetch San Francisco events from Ticketmaster Discovery API."
-    
-    # Set default date range if not provided
-    # if start_date is None:
-    #     start_date = (datetime.now() - timedelta(days=30)).strftime("%Y-%m-%dT00:00:00Z")
-    # if end_date is None:
-    #     end_date = datetime.now().strftime("%Y-%m-%dT23:59:59Z")
+    if start_date is None:
+        start_date = (datetime.now()).strftime("%Y-%m-%dT00:00:00Z")
+    if end_date is None:
+        end_date = (datetime.now() + timedelta(days=30)).strftime("%Y-%m-%dT23:59:59Z")
 
     try:
-        events = await fetch_ticketmaster_events(
+        events = await fetch_sf_ticketmaster_events(
             
             keyword=keyword,
             start_date_time=start_date,
