@@ -16,30 +16,62 @@ async def fetch_ticketmaster_events(
     start_date_time: Optional[str] = None,
     end_date_time: Optional[str] = None,
 ) -> Dict[str, Any]:
-    
-    url = "https://app.ticketmaster.com/discovery/v2/events.json?apikey=OGEc060IJneRcI1wTBj5lnOXzPi56EaX"
+    """Fetch all events from Ticketmaster API with pagination."""
+    url = f"https://app.ticketmaster.com/discovery/v2/events.json"
 
-    params = {
+    base_params = {
         "apikey": TICKETMASTER_API_KEY,
-        'size': 100
+        "size": 200
     }
 
     if city:
-        params["city"] = city
+        base_params["city"] = city
     if state_code:
-        params["stateCode"] = state_code
+        base_params["stateCode"] = state_code
     if keyword:
-        params["keyword"] = keyword
+        base_params["keyword"] = keyword
     if start_date_time:
-        params["startDateTime"] = start_date_time
+        base_params["startDateTime"] = start_date_time
     if end_date_time:
-        params["endDateTime"] = end_date_time
-    print("Fetching Ticketmaster events with params:", params)
+        base_params["endDateTime"] = end_date_time
+
+    all_events = []
+    page = 0
+    total_pages = 1
+
     try:
         async with httpx.AsyncClient(timeout=15.0) as client:
-            response = await client.get(url, params=params)
-            response.raise_for_status()
-            return response.json()
+            while page < total_pages:
+                params = {**base_params, "page": page}
+                print(f"Fetching Ticketmaster events - page {page + 1}/{total_pages} with params:", params)
+                
+                response = await client.get(url, params=params)
+                response.raise_for_status()
+                data = response.json()
+                
+                # Update total pages from response
+                page_info = data.get("page", {})
+                total_pages = page_info.get("totalPages", 1)
+                
+                # Collect events from this page
+                embedded = data.get("_embedded", {})
+                events = embedded.get("events", [])
+                all_events.extend(events)
+                
+                print(f"Retrieved {len(events)} events from page {page + 1}. Total so far: {len(all_events)}")
+                
+                page += 1
+            
+            # Return response in same format as original
+            return {
+                "_embedded": {"events": all_events},
+                "page": {
+                    "size": len(all_events),
+                    "totalElements": len(all_events),
+                    "totalPages": total_pages,
+                    "number": 0
+                }
+            }
     except httpx.HTTPError as e:
         raise Exception(f"Failed to fetch Ticketmaster events: {str(e)}")
     
@@ -53,12 +85,6 @@ async def fetch_sf_ticketmaster_events(
 ) -> List[Dict[str, Any]]:
     """
     Fetch San Francisco events from Ticketmaster.
-    
-    Args:
-        keyword: Optional keyword to search for
-        start_date_time: Optional start date/time filter
-        end_date_time: Optional end date/time filter
-        
     Returns:
         List of event dictionaries normalized to common format
     """
@@ -66,7 +92,7 @@ async def fetch_sf_ticketmaster_events(
     print("end_date_time:", end_date_time)
     response = await fetch_ticketmaster_events(
         
-        city="San Francisco",
+        city="Los Angeles",
         state_code="CA",
         keyword=keyword,
         start_date_time=start_date_time,
@@ -80,33 +106,39 @@ async def fetch_sf_ticketmaster_events(
     
     for event in raw_events:
         # Extract venue information
-        venues = event.get("_embedded", {}).get("venues", [])
-        location = venues[0].get("name") if venues else None
-        if location and venues:
-            venue = venues[0]
-            city = venue.get("city", {}).get("name", "")
-            state = venue.get("state", {}).get("stateCode", "")
-            if city or state:
-                location = f"{location}, {city}, {state}".strip(", ")
-        
-        # Extract date information
-        dates = event.get("dates", {})
-        start = dates.get("start", {})
-        date_str = start.get("dateTime") or start.get("localDate")
-        
-        normalized_event = {
-            "title": event.get("name"),
-            "date": date_str,
-            "location": location,
-            "url": event.get("url"),
-            "description": event.get("info") or event.get("pleaseNote"),
-            "source": "Ticketmaster",
-            # "raw_data": event,  # Keep original data for reference
-        }
+        normalized_event = normalize_ticketmaster_event(event)
         events.append(normalized_event)
-    
+        
     return events
 
+
+def normalize_ticketmaster_event(event: Dict[str, Any]) -> Dict[str, Any]:
+    """Normalize a single Ticketmaster event to common format."""
+    # Extract venue information
+    venues = event.get("_embedded", {}).get("venues", [])
+    location = venues[0].get("name") if venues else None
+    if location and venues:
+        venue = venues[0]
+        city = venue.get("city", {}).get("name", "")
+        state = venue.get("state", {}).get("stateCode", "")
+        if city or state:
+            location = f"{location}, {city}, {state}".strip(", ")
+    
+    # Extract date information
+    dates = event.get("dates", {})
+    start = dates.get("start", {})
+    date_str = start.get("dateTime") or start.get("localDate")
+    
+    normalized_event = {
+        "title": event.get("name"),
+        "date": date_str,
+        "location": location,
+        "url": event.get("url"),
+        "description": event.get("info") or event.get("pleaseNote"),
+        "source": "Ticketmaster",
+        # "raw_data": event,  # Keep original data for reference
+    }
+    return normalized_event
 
 async def test_ticketmaster_api() -> List[Dict[str, Any]]:
     """Test the Ticketmaster API by fetching a small set of SF events."""

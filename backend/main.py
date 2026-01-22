@@ -95,22 +95,6 @@ async def startup_event():
     await init_db()
 
 
-async def fetch_html(url: str) -> str:
-    async with httpx.AsyncClient(timeout=15.0) as client:
-        resp = await client.get(url)
-        resp.raise_for_status()
-        return resp.text
-
-
-def text_or_none(nodes):
-    if not nodes:
-        return None
-    if isinstance(nodes, (list, tuple)):
-        text = " ".join([n.strip() for n in nodes if n and isinstance(n, str)])
-        return text.strip() or None
-    return str(nodes).strip() or None
-
-
 @app.post("/test_scrape")
 async def scrape_and_store(req: ScrapeRequest):
     """Scrape events from a URL and store them in the database."""
