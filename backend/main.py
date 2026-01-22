@@ -82,7 +82,8 @@ async def init_db():
                 location TEXT,
                 url TEXT,
                 description TEXT,
-                source TEXT
+                source TEXT,
+                UNIQUE (title, date, location, source)
             )
             """
         )
@@ -101,6 +102,25 @@ async def scrape_and_store(req: ScrapeRequest):
     events =  await test_scraping()
     return events
 
+async def populate_database(events: List[dict]):
+    conn = await asyncpg.connect(DATABASE_URL)
+    try:
+        for event in events:
+            # Insert event into database, only if it doesn't already exist
+            await conn.execute(
+                """
+                INSERT INTO events (title, date, location, url, description, source)
+                VALUES ($1, $2, $3, $4, $5, $6)
+                """,
+                event.get("title"),
+                event.get("date"),
+                event.get("location"),
+                event.get("url"),
+                event.get("description"),
+                event.get("source"),
+            )
+    finally:
+        await conn.close()
 
 @app.get("/ticketmaster")
 async def get_ticketmaster_events(  
@@ -120,6 +140,7 @@ async def get_ticketmaster_events(
             start_date_time=start_date,
             end_date_time=end_date,
         )
+        await populate_database(events)
         return {
             "count": len(events),
             "events": events,
