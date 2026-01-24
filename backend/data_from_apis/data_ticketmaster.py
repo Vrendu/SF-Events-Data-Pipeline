@@ -87,7 +87,11 @@ async def fetch_bay_area_ticketmaster_events(
         List of event dictionaries normalized to common format
     """
 
-    bay_area_cities = ["San Francisco", "Oakland", "San Jose", "Berkeley", "Palo Alto", "Campbell"]
+    bay_area_cities = ["San Francisco", "Oakland", 
+                       "San Jose", "Berkeley", "Palo Alto", 
+                       "Mountain View", "Campbell", "Sunnyvale",
+                       "Santa Clara", "Redwood City", 
+                       "San Mateo","San Bruno"]
     events = []
     for city in bay_area_cities:
         response = await fetch_ticketmaster_events(
@@ -137,10 +141,4 @@ def normalize_ticketmaster_event(event: Dict[str, Any]) -> Dict[str, Any]:
     }
     return normalized_event
 
-async def test_ticketmaster_api() -> List[Dict[str, Any]]:
-    """Test the Ticketmaster API by fetching a small set of SF events."""
-    try:
-        events = await fetch_sf_ticketmaster_events()
-        return events
-    except Exception as e:
-        raise Exception(f"Ticketmaster API test failed: {str(e)}")
+
