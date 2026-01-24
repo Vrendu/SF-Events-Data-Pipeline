@@ -42,6 +42,7 @@ class EventOut(BaseModel):
     id: Optional[int]
     title: str
     date: Optional[str] = None
+    venue: Optional[str] = None
     location: Optional[str] = None
     latlong: Optional[str] = None
     url: Optional[str] = None
@@ -89,7 +90,7 @@ async def init_db():
         )
         await conn.execute(
             """
-            CREATE UNIQUE INDEX IF NOT EXISTS idx_events_title ON events (title, date, location, source);
+            CREATE UNIQUE INDEX IF NOT EXISTS idx_events_title ON events (title, date, venue, source);
             """
         )
     finally:
