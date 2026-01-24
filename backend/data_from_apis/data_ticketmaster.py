@@ -134,6 +134,7 @@ def normalize_ticketmaster_event(event: Dict[str, Any]) -> Dict[str, Any]:
     normalized_event = {
         "title": event.get("name"),
         "date": date_str,
+        "time": date_str,
         "venue": venue,
         "url": event.get("url"),
         "description": event.get("info") or event.get("pleaseNote"),

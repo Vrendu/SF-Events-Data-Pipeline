@@ -10,8 +10,7 @@ from lxml import html
 from pydantic import BaseModel
 
 from data_from_apis.data_ticketmaster import fetch_bay_area_ticketmaster_events
-
-
+from scraping.scraping_venues import scrape_events_from_warfield
 load_dotenv()
 
 DATABASE_URL = os.getenv("DATABASE_URL")
@@ -20,7 +19,7 @@ app = FastAPI(title="Events Scraper API", version="1.0.0")
 
 
 class ScrapeRequest(BaseModel):
-    url: str
+    url: Optional[str] = None
     source: Optional[str] = None
 
 
@@ -28,10 +27,12 @@ class Event(BaseModel):
     id: Optional[int]
     title: str
     date: Optional[str] = None
+    time: Optional[str] = None
     venue: Optional[str] = None
     location: Optional[str] = None
     latlong: Optional[str] = None
     url: Optional[str] = None
+    images: Optional[List[str]] = None
     description: Optional[str] = None
     source: Optional[List[str]] = None
 
@@ -67,6 +68,7 @@ async def init_db():
                 id SERIAL PRIMARY KEY,
                 title TEXT NOT NULL,
                 date TEXT,
+                time TEXT,
                 venue TEXT,
                 location TEXT,
                 latlong TEXT,
@@ -78,7 +80,7 @@ async def init_db():
         )
         await conn.execute(
             """
-            CREATE UNIQUE INDEX IF NOT EXISTS idx_events_title ON events (title, date, venue);
+            CREATE UNIQUE INDEX IF NOT EXISTS idx_events_title ON events (title, date, time, venue);
             """
         )
     finally:
@@ -90,8 +92,11 @@ async def startup_event():
     await init_db()
 
 
-@app.post("/test_scrape")
-
+@app.post("/scrape_events")
+async def scrape_events(request: ScrapeRequest):
+    response = await scrape_events_from_warfield(request.url)
+    await populate_database(response)
+    return response
 
 async def populate_database(events: List[dict]):
     conn = await asyncpg.connect(DATABASE_URL)
@@ -107,14 +112,15 @@ async def populate_database(events: List[dict]):
                 
                 result = await conn.execute(
                     """
-                    INSERT INTO events (title, date, venue, location, latlong, url, description, source)
-                    VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
-                    ON CONFLICT (title, date, venue) 
-                    DO UPDATE SET source = array_append(events.source, $9)
-                    WHERE NOT ($9 = ANY(events.source))
+                    INSERT INTO events (title, date, time, venue, location, latlong, url, description, source)
+                    VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
+                    ON CONFLICT (title, date, time, venue) 
+                    DO UPDATE SET source = array_append(events.source, $10)
+                    WHERE NOT ($10 = ANY(events.source))
                     """,
                     event.get("title"),
                     event.get("date"),
+                    event.get("time"),
                     event.get("venue"),
                     event.get("location"),
                     event.get("latlong"),
@@ -129,7 +135,7 @@ async def populate_database(events: List[dict]):
                     print(f"✓ Inserted: {event.get('title')}")
                 else:
                     skipped_count += 1
-                    print(f"○ Updated duplicate with new source: {event.get('title')} - {event.get('source')}")
+                    print(f"○ Updated duplicate with new source: {event.get('source')}")
                 
             except Exception as e:
                 print(f"✗ Error inserting event '{event.get('title')}': {str(e)}")
@@ -148,7 +154,7 @@ async def get_ticketmaster_events(
     if start_date is None:
         start_date = (datetime.now()).strftime("%Y-%m-%dT00:00:00Z")
     if end_date is None:
-        end_date = (datetime.now() + timedelta(days=30)).strftime("%Y-%m-%dT23:59:59Z")
+        end_date = (datetime.now() + timedelta(days=100)).strftime("%Y-%m-%dT23:59:59Z")
 
     try:
         events = await fetch_bay_area_ticketmaster_events(
