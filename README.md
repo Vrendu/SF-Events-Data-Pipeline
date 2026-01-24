@@ -1,7 +1,7 @@
 # SF-Events-Data-Pipeline
 
 
-# Scraping Sources: 
+# Scraping Sources 
 
 City & public
 
@@ -36,6 +36,6 @@ https://rickshawstop.com/calendar
 https://gamh.com/calendar
 
 
-Other Sources:
+# Other Sources
 
 Ticketmaster API
