@@ -1,16 +1,3 @@
-"""FastAPI backend for scraping events and storing them in PostgreSQL.
-
-Endpoints:
-- POST /test_scrape       -> test web scraping and return events
-- GET  /ticketmaster      -> fetch SF events from Ticketmaster API
-- GET  /events            -> list stored events from database
-- GET  /health            -> health check endpoint
-
-Notes:
-- Uses `asyncpg` for async DB access and `httpx` + `lxml` for scraping/parsing.
-- Requires DATABASE_URL environment variable (e.g., postgresql://user:pass@localhost/dbname)
-"""
-
 import os
 from typing import List, Optional
 from datetime import datetime, timedelta
@@ -25,7 +12,6 @@ from pydantic import BaseModel
 from data_from_apis.data_ticketmaster import fetch_bay_area_ticketmaster_events
 
 
-# Load environment variables from .env file
 load_dotenv()
 
 DATABASE_URL = os.getenv("DATABASE_URL")
@@ -38,7 +24,7 @@ class ScrapeRequest(BaseModel):
     source: Optional[str] = None
 
 
-class EventOut(BaseModel):
+class Event(BaseModel):
     id: Optional[int]
     title: str
     date: Optional[str] = None
@@ -47,7 +33,8 @@ class EventOut(BaseModel):
     latlong: Optional[str] = None
     url: Optional[str] = None
     description: Optional[str] = None
-    source: Optional[str] = None
+    source: Optional[List[str]] = None
+
 
 
 async def init_db():
@@ -85,13 +72,13 @@ async def init_db():
                 latlong TEXT,
                 url TEXT,
                 description TEXT,
-                source TEXT             
+                source TEXT[]             
             )
             """
         )
         await conn.execute(
             """
-            CREATE UNIQUE INDEX IF NOT EXISTS idx_events_title ON events (title, date, venue, source);
+            CREATE UNIQUE INDEX IF NOT EXISTS idx_events_title ON events (title, date, venue);
             """
         )
     finally:
@@ -114,12 +101,17 @@ async def populate_database(events: List[dict]):
     try:
         for event in events:
             try:
-                # Insert event into database, skip if duplicate exists
+                # Insert event into database, or append source if duplicate exists
+                source_value = event.get("source")
+                source_array = [source_value] if source_value else []
+                
                 result = await conn.execute(
                     """
                     INSERT INTO events (title, date, venue, location, latlong, url, description, source)
                     VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
-                    ON CONFLICT (title, date, venue, source) DO NOTHING
+                    ON CONFLICT (title, date, venue) 
+                    DO UPDATE SET source = array_append(events.source, $9)
+                    WHERE NOT ($9 = ANY(events.source))
                     """,
                     event.get("title"),
                     event.get("date"),
@@ -128,7 +120,8 @@ async def populate_database(events: List[dict]):
                     event.get("latlong"),
                     event.get("url"),
                     event.get("description"),
-                    event.get("source"),
+                    source_array,
+                    source_value,
                 )
                 # Check if row was actually inserted
                 if result == "INSERT 0 1":
@@ -136,7 +129,8 @@ async def populate_database(events: List[dict]):
                     print(f"✓ Inserted: {event.get('title')}")
                 else:
                     skipped_count += 1
-                    print(f"○ Skipped duplicate: {event.get('title')}")
+                    print(f"○ Updated duplicate with new source: {event.get('title')} - {event.get('source')}")
+                
             except Exception as e:
                 print(f"✗ Error inserting event '{event.get('title')}': {str(e)}")
                 continue
@@ -173,11 +167,11 @@ async def get_ticketmaster_events(
 
 
 
-@app.post("/scrape_events", response_model=List[EventOut])
+@app.post("/scrape_events", response_model=List[Event])
 
 
-@app.get("/events", response_model=List[EventOut])
-async def list_events(source: Optional[str] = None, limit: int = 100):
+@app.get("/events_test", response_model=List[Event])
+async def list_events(source: Optional[str] = None, limit: int = 1000):
     """List stored events, optionally filtered by source."""
     if limit > 1000:
         limit = 1000  # Cap limit to prevent abuse
@@ -185,17 +179,41 @@ async def list_events(source: Optional[str] = None, limit: int = 100):
     try:
         if source:
             rows = await conn.fetch(
-                """SELECT id,title,date,location,url,description,source 
-                   FROM events WHERE source=$1 ORDER BY id DESC LIMIT $2""",
-                source, limit
+                """
+                SELECT * FROM events
+                WHERE $1 = ANY(source)
+                ORDER BY date DESC
+                LIMIT $2
+                """,
+                source,
+                limit,
             )
         else:
             rows = await conn.fetch(
-                """SELECT id,title,date,location,url,description,source 
-                   FROM events ORDER BY id DESC LIMIT $1""",
-                limit
+                """
+                SELECT * FROM events
+                ORDER BY date DESC
+                LIMIT $1
+                """,
+                limit,
             )
-        return [dict(r) for r in rows]
+        events = []
+        for row in rows:
+            event = Event(
+                id=row["id"],
+                title=row["title"],
+                date=row["date"],
+                venue=row["venue"],
+                location=row["location"],
+                latlong=row["latlong"],
+                url=row["url"],
+                description=row["description"],
+                source=row["source"],
+            )
+            events.append(event)
+        length = len(events)
+        print(f"Retrieved {length} events from database (source filter: {source})")
+        return events
     finally:
         await conn.close()
 
