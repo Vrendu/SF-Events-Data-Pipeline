@@ -22,8 +22,7 @@ from fastapi import FastAPI, HTTPException
 from lxml import html
 from pydantic import BaseModel
 
-from scraping import test_scraping
-from data_ticketmaster import fetch_bay_area_ticketmaster_events
+from data_from_apis.data_ticketmaster import fetch_bay_area_ticketmaster_events
 
 
 # Load environment variables from .env file
@@ -103,11 +102,7 @@ async def startup_event():
 
 
 @app.post("/test_scrape")
-async def scrape_and_store(req: ScrapeRequest):
-    """Scrape events from a URL and store them in the database."""
-    events =  await test_scraping()
-    await populate_database(events)
-    return events
+
 
 async def populate_database(events: List[dict]):
     conn = await asyncpg.connect(DATABASE_URL)
