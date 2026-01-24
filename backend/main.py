@@ -154,7 +154,7 @@ async def get_ticketmaster_events(
     if start_date is None:
         start_date = (datetime.now()).strftime("%Y-%m-%dT00:00:00Z")
     if end_date is None:
-        end_date = (datetime.now() + timedelta(days=100)).strftime("%Y-%m-%dT23:59:59Z")
+        end_date = (datetime.now() + timedelta(days=120)).strftime("%Y-%m-%dT23:59:59Z")
 
     try:
         events = await fetch_bay_area_ticketmaster_events(
