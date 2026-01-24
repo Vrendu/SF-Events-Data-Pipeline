@@ -80,6 +80,7 @@ async def init_db():
                 id SERIAL PRIMARY KEY,
                 title TEXT NOT NULL,
                 date TEXT,
+                venue TEXT,
                 location TEXT,
                 latlong TEXT,
                 url TEXT,
@@ -116,13 +117,15 @@ async def populate_database(events: List[dict]):
                 # Insert event into database, skip if duplicate exists
                 result = await conn.execute(
                     """
-                    INSERT INTO events (title, date, location, url, description, source)
-                    VALUES ($1, $2, $3, $4, $5, $6)
-                    ON CONFLICT (title, date, location, source) DO NOTHING
+                    INSERT INTO events (title, date, venue, location, latlong, url, description, source)
+                    VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
+                    ON CONFLICT (title, date, venue, source) DO NOTHING
                     """,
                     event.get("title"),
                     event.get("date"),
+                    event.get("venue"),
                     event.get("location"),
+                    event.get("latlong"),
                     event.get("url"),
                     event.get("description"),
                     event.get("source"),

@@ -114,13 +114,13 @@ def normalize_ticketmaster_event(event: Dict[str, Any]) -> Dict[str, Any]:
     """Normalize a single Ticketmaster event to common format."""
     # Extract venue information
     venues = event.get("_embedded", {}).get("venues", [])
-    location = venues[0].get("name") if venues else None
-    if location and venues:
-        venue = venues[0]
-        city = venue.get("city", {}).get("name", "")
-        state = venue.get("state", {}).get("stateCode", "")
+    venue = venues[0].get("name") if venues else None
+    if venue and venues:
+        venue_info = venues[0]
+        city = venue_info.get("city", {}).get("name", "")
+        state = venue_info.get("state", {}).get("stateCode", "")
         if city or state:
-            location = f"{location}, {city}, {state}".strip(", ")
+            venue = f"{venue}, {city}, {state}".strip(", ")
     
     # Extract date information
     dates = event.get("dates", {})
@@ -130,7 +130,7 @@ def normalize_ticketmaster_event(event: Dict[str, Any]) -> Dict[str, Any]:
     normalized_event = {
         "title": event.get("name"),
         "date": date_str,
-        "location": location,
+        "venue": venue,
         "url": event.get("url"),
         "description": event.get("info") or event.get("pleaseNote"),
         "source": "Ticketmaster"
