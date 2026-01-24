@@ -259,8 +259,7 @@ async def scrape_multiple_sf_sources() -> List[Dict[str, Any]]:
 
 async def test_scraping() -> List[Dict[str, Any]]:
     """Run a quick scrape against Eventbrite SF and return the events."""
-    test_url = "https://www.ticketmaster.com/search?q=san%20francisco"
-
+    test_url = "https://www.eventbrite.com/d/united-states--san-francisco/events/"
 
     try:
         events = await scrape_sf_events(test_url, "Eventbrite SF")

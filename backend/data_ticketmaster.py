@@ -133,8 +133,7 @@ def normalize_ticketmaster_event(event: Dict[str, Any]) -> Dict[str, Any]:
         "location": location,
         "url": event.get("url"),
         "description": event.get("info") or event.get("pleaseNote"),
-        "source": "Ticketmaster",
-        #"raw_data": event,  # Keep original data for reference
+        "source": "Ticketmaster"
     }
     return normalized_event
 

@@ -23,7 +23,7 @@ from lxml import html
 from pydantic import BaseModel
 
 from scraping import test_scraping
-from data import fetch_bay_area_ticketmaster_events
+from data_ticketmaster import fetch_bay_area_ticketmaster_events
 
 
 # Load environment variables from .env file
@@ -44,6 +44,7 @@ class EventOut(BaseModel):
     title: str
     date: Optional[str] = None
     location: Optional[str] = None
+    latlong: Optional[str] = None
     url: Optional[str] = None
     description: Optional[str] = None
     source: Optional[str] = None
@@ -80,10 +81,16 @@ async def init_db():
                 title TEXT NOT NULL,
                 date TEXT,
                 location TEXT,
+                latlong TEXT,
                 url TEXT,
                 description TEXT,
                 source TEXT             
             )
+            """
+        )
+        await conn.execute(
+            """
+            CREATE UNIQUE INDEX IF NOT EXISTS idx_events_title ON events (title, date, location, source);
             """
         )
     finally:
@@ -99,6 +106,7 @@ async def startup_event():
 async def scrape_and_store(req: ScrapeRequest):
     """Scrape events from a URL and store them in the database."""
     events =  await test_scraping()
+    await populate_database(events)
     return events
 
 async def populate_database(events: List[dict]):
@@ -138,7 +146,7 @@ async def populate_database(events: List[dict]):
     finally:
         await conn.close()
 
-@app.get("/ticketmaster")
+@app.post("/ticketmaster")
 async def get_ticketmaster_events(  
     keyword: Optional[str] = None,
     start_date: Optional[str] = None,
@@ -163,6 +171,10 @@ async def get_ticketmaster_events(
         }
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Failed to fetch Ticketmaster events: {str(e)}")
+
+
+
+@app.post("/scrape_events", response_model=List[EventOut])
 
 
 @app.get("/events", response_model=List[EventOut])
