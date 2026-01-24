@@ -111,23 +111,7 @@ curl http://localhost:8000/health
 ### POST `/scrape`
 Scrape events from a URL and store them in the database.
 
-**Request body:**
-```json
-{
-  "url": "https://example.com/events",
-  "source": "optional-source-name"
-}
-```
 
-**Response:**
-```json
-{
-  "events": [...],
-  "total_found": 10,
-  "inserted": 8,
-  "duplicates_skipped": 2
-}
-```
 
 ### GET `/events`
 List stored events.
@@ -159,6 +143,7 @@ The `events` table has the following structure:
 - `title` (TEXT NOT NULL)
 - `date` (TEXT)
 - `location` (TEXT)
+- `latlong` (TEXT)
 - `url` (TEXT)
 - `description` (TEXT)
 - `source` (TEXT)
