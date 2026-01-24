@@ -82,8 +82,7 @@ async def init_db():
                 location TEXT,
                 url TEXT,
                 description TEXT,
-                source TEXT,
-                UNIQUE (title, date, location, source)
+                source TEXT             
             )
             """
         )
@@ -104,21 +103,38 @@ async def scrape_and_store(req: ScrapeRequest):
 
 async def populate_database(events: List[dict]):
     conn = await asyncpg.connect(DATABASE_URL)
+    inserted_count = 0
+    skipped_count = 0
+    
     try:
         for event in events:
-            # Insert event into database, only if it doesn't already exist
-            await conn.execute(
-                """
-                INSERT INTO events (title, date, location, url, description, source)
-                VALUES ($1, $2, $3, $4, $5, $6)
-                """,
-                event.get("title"),
-                event.get("date"),
-                event.get("location"),
-                event.get("url"),
-                event.get("description"),
-                event.get("source"),
-            )
+            try:
+                # Insert event into database, skip if duplicate exists
+                result = await conn.execute(
+                    """
+                    INSERT INTO events (title, date, location, url, description, source)
+                    VALUES ($1, $2, $3, $4, $5, $6)
+                    ON CONFLICT (title, date, location, source) DO NOTHING
+                    """,
+                    event.get("title"),
+                    event.get("date"),
+                    event.get("location"),
+                    event.get("url"),
+                    event.get("description"),
+                    event.get("source"),
+                )
+                # Check if row was actually inserted
+                if result == "INSERT 0 1":
+                    inserted_count += 1
+                    print(f"✓ Inserted: {event.get('title')}")
+                else:
+                    skipped_count += 1
+                    print(f"○ Skipped duplicate: {event.get('title')}")
+            except Exception as e:
+                print(f"✗ Error inserting event '{event.get('title')}': {str(e)}")
+                continue
+        
+        print(f"\n📊 Database summary: {inserted_count} inserted, {skipped_count} duplicates skipped")
     finally:
         await conn.close()
 
