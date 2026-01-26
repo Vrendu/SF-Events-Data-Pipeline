@@ -1,5 +1,6 @@
 from bs4 import BeautifulSoup
 import requests
+import re
 from typing import List
 
 
@@ -31,6 +32,8 @@ async def scrape_events_from_warfield(url: str) -> List[dict]:
             else None
         )
 
+        cleaned_time = re.sub(r"\s+", " ", raw_time).strip() if raw_time else None
+
         events.append(
             {
                 "title": raw_title,
@@ -46,3 +49,20 @@ async def scrape_events_from_warfield(url: str) -> List[dict]:
        
     return events
 
+async def scrape_events_from_funcheap(url: str) -> List[dict]:
+    url = "https://www.funcheap.com/san-francisco/"
+    response = requests.get(url, timeout=15)
+    soup = BeautifulSoup(response.content, "html.parser")
+
+    events = []
+
+    return events
+
+async def scrape_events_from_dothebay(url: str) -> List[dict]:
+    url = "https://www.dothebay.com/events/"
+    response = requests.get(url, timeout=15)
+    soup = BeautifulSoup(response.content, "html.parser")
+
+    events = []
+
+    return events

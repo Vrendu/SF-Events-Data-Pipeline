@@ -10,7 +10,7 @@ from lxml import html
 from pydantic import BaseModel
 
 from data_from_apis.data_ticketmaster import fetch_bay_area_ticketmaster_events
-from scraping.scraping_venues import scrape_events_from_warfield
+from scraping.scraping_venues import scrape_events_from_warfield, scrape_events_from_funcheap, scrape_events_from_dothebay
 load_dotenv()
 
 DATABASE_URL = os.getenv("DATABASE_URL")
@@ -24,7 +24,7 @@ class ScrapeRequest(BaseModel):
 
 
 class Event(BaseModel):
-    id: Optional[int]
+    id: Optional[int] = None
     title: str
     date: Optional[str] = None
     time: Optional[str] = None
@@ -32,10 +32,8 @@ class Event(BaseModel):
     location: Optional[str] = None
     latlong: Optional[str] = None
     url: Optional[str] = None
-    images: Optional[List[str]] = None
     description: Optional[str] = None
-    source: Optional[List[str]] = None
-
+    source: Optional[str] = None
 
 
 async def init_db():
@@ -74,7 +72,7 @@ async def init_db():
                 latlong TEXT,
                 url TEXT,
                 description TEXT,
-                source TEXT[]             
+                source TEXT             
             )
             """
         )
@@ -92,31 +90,21 @@ async def startup_event():
     await init_db()
 
 
-@app.post("/scrape_events")
-async def scrape_events(request: ScrapeRequest):
-    response = await scrape_events_from_warfield(request.url)
-    await populate_database(response)
-    return response
-
 async def populate_database(events: List[dict]):
     conn = await asyncpg.connect(DATABASE_URL)
     inserted_count = 0
     skipped_count = 0
-    
+
     try:
         for event in events:
             try:
-                # Insert event into database, or append source if duplicate exists
-                source_value = event.get("source")
-                source_array = [source_value] if source_value else []
-                
+               
                 result = await conn.execute(
                     """
                     INSERT INTO events (title, date, time, venue, location, latlong, url, description, source)
                     VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
                     ON CONFLICT (title, date, time, venue) 
-                    DO UPDATE SET source = array_append(events.source, $10)
-                    WHERE NOT ($10 = ANY(events.source))
+                    DO NOTHING
                     """,
                     event.get("title"),
                     event.get("date"),
@@ -126,8 +114,7 @@ async def populate_database(events: List[dict]):
                     event.get("latlong"),
                     event.get("url"),
                     event.get("description"),
-                    source_array,
-                    source_value,
+                    event.get("source"),
                 )
                 # Check if row was actually inserted
                 if result == "INSERT 0 1":
@@ -135,15 +122,36 @@ async def populate_database(events: List[dict]):
                     print(f"✓ Inserted: {event.get('title')}")
                 else:
                     skipped_count += 1
-                    print(f"○ Updated duplicate with new source: {event.get('source')}")
-                
+                    print(f"○ Skipped duplicate: {event.get('title')}")
+
             except Exception as e:
                 print(f"✗ Error inserting event '{event.get('title')}': {str(e)}")
                 continue
-        
+
         print(f"\n📊 Database summary: {inserted_count} inserted, {skipped_count} duplicates skipped")
     finally:
         await conn.close()
+
+
+@app.post("/scrape_events_warfield", response_model=List[Event])
+async def scrape_events_warfield(request: ScrapeRequest):
+    response = await scrape_events_from_warfield(request.url)
+    await populate_database(response)
+    return response
+
+
+@app.post("/scrape_events_funcheap", response_model=List[Event])
+async def scrape_events_funcheap(request: ScrapeRequest):
+    response = await scrape_events_from_funcheap(request.url)
+    await populate_database(response)
+    return response
+
+@app.post("/scrape_events_dothebay", response_model=List[Event])
+async def scrape_events_dothebay(request: ScrapeRequest):
+    response = await scrape_events_from_dothebay(request.url)
+    await populate_database(response)
+    return response
+
 
 @app.post("/ticketmaster")
 async def get_ticketmaster_events(  
@@ -171,9 +179,25 @@ async def get_ticketmaster_events(
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Failed to fetch Ticketmaster events: {str(e)}")
 
-
-
-@app.post("/scrape_events", response_model=List[Event])
+@app.get("/get_ticketmaster_events", response_model=List[Event])
+async def get_ticketmaster_events(  
+    keyword: Optional[str] = None,
+    start_date: Optional[str] = datetime.now().strftime("%Y-%m-%d"),
+    end_date: Optional[str] = (datetime.now() + timedelta(days=120)).strftime("%Y-%m-%d"),
+):
+    conn = await asyncpg.connect(DATABASE_URL)
+    try:
+        results = await conn.fetch(
+            """
+            SELECT * FROM events
+            WHERE date >= $1 AND date <= $2 AND 'Ticketmaster' = ANY(source)
+            """,
+            start_date,
+            end_date,
+        )
+        return results
+    finally:
+        await conn.close()
 
 
 @app.get("/events_test", response_model=List[Event])
