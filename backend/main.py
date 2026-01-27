@@ -9,7 +9,7 @@ from fastapi import FastAPI, HTTPException
 from lxml import html
 from pydantic import BaseModel
 
-from data_from_apis.data_ticketmaster import fetch_bay_area_ticketmaster_events
+from data_from_apis.data_ticketmaster import fetch_bay_area_ticketmaster_events, fetch_ticketmaster_events
 from scraping.scraping_venues import (
     scrape_events_from_warfield,
     scrape_events_from_funcheap,
@@ -164,8 +164,8 @@ async def scrape_events_warfield():
 
 
 @app.post("/scrape_events_funcheap", response_model=List[Event])
-async def scrape_events_funcheap(request: ScrapeRequest):
-    response = await scrape_events_from_funcheap(request.url)
+async def scrape_events_funcheap():
+    response = await scrape_events_from_funcheap()
     # await populate_database(response)
     return response
 
@@ -204,29 +204,6 @@ async def get_ticketmaster_events(
             status_code=500, detail=f"Failed to fetch Ticketmaster events: {str(e)}"
         )
 
-
-@app.get("/get_ticketmaster_events", response_model=List[Event])
-async def retrieve_ticketmaster_events(
-    keyword: Optional[str] = None,
-    start_date: Optional[str] = datetime.now().strftime("%Y-%m-%d"),
-    end_date: Optional[str] = (datetime.now() + timedelta(days=120)).strftime(
-        "%Y-%m-%d"
-    ),
-):
-    conn = await asyncpg.connect(DATABASE_URL)
-    try:
-        results = await conn.fetch(
-            """
-            SELECT * FROM events
-            WHERE datetime >= $1 AND datetime <= $2 AND source = 'Ticketmaster'
-            ORDER BY datetime ASC
-            """,
-            start_date,
-            end_date,
-        )
-        return results
-    finally:
-        await conn.close()
 
 
 @app.get("/events_test", response_model=List[Event])

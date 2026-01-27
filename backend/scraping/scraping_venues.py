@@ -54,51 +54,77 @@ async def scrape_events_from_warfield() -> List[dict]:
 
     return events
 
-async def scrape_events_from_funcheap() -> List[dict]:
-    url_base = "https://sf.funcheap.com/events"
-    response = requests.get(url_base, timeout=15)
-    soup = BeautifulSoup(response.content, "html.parser")
 
+async def scrape_events_from_funcheap(max_pages: int = 5) -> List[dict]:
     events = []
 
-    # -------- FORMAT A: Featured card events --------
-    for event in soup.select("div.post.type-post"):
-        title_el = event.select_one("div.title.entry-title")
-        meta_el = event.select_one("div.meta.date-time")
-        link_el = event.select_one("a")
+    for page_num in range(1, max_pages + 1):
+        # First page is /events, subsequent pages are /events/page/N
+        if page_num == 1:
+            url = "https://sf.funcheap.com/events"
+        else:
+            url = f"https://sf.funcheap.com/events/page/{page_num}"
 
-        title = title_el.get_text(strip=True) if title_el else None
-        start_dt = meta_el.get("data-event-date") if meta_el else None
-        end_dt = meta_el.get("data-event-date-end") if meta_el else None
-        url = link_el["href"] if link_el else None
+        print(f"Scraping page {page_num}: {url}")
 
-        if title:
-            events.append(
-                {
-                    "title": title,
-                    "start_datetime": start_dt,
-                    "end_datetime": end_dt,
-                    "url": url,
-                    "source": "sf.funcheap.com",
-                }
-            )
+        try:
+            response = requests.get(url, timeout=15)
 
-    # -------- FORMAT B: Table row events --------
-    for row in soup.select("tr.post"):
-        time_el = row.select_one("td:first-child")
-        title_el = row.select_one("span.title2.entry-title a")
+            # Stop if we hit a 404
+            if response.status_code == 404:
+                print(f"Reached end at page {page_num}")
+                break
 
-        if not title_el:
-            continue
+            soup = BeautifulSoup(response.content, "html.parser")
 
-        title = title_el.get_text(strip=True)
-        url = title_el["href"]
-        time = time_el.get_text(strip=True) if time_el else None
+            # -------- FORMAT A: Featured card events --------
+            for event in soup.select("div.post.type-post"):
+                title_el = event.select_one("div.title.entry-title")
+                meta_el = event.select_one("div.meta.date-time")
+                link_el = event.select_one("a")
 
-        events.append(
-            {"title": title, "time": time, "url": url, "source": "sf.funcheap.com"}
-        )
+                title = title_el.get_text(strip=True) if title_el else None
+                start_dt = meta_el.get("data-event-date") if meta_el else None
+                end_dt = meta_el.get("data-event-date-end") if meta_el else None
+                event_url = link_el["href"] if link_el else None
 
+                if title:
+                    events.append(
+                        {
+                            "title": title,
+                            "start_datetime": start_dt,
+                            "end_datetime": end_dt,
+                            "url": event_url,
+                            "source": "sf.funcheap.com",
+                        }
+                    )
+
+            # -------- FORMAT B: Table row events --------
+            for row in soup.select("tr.post"):
+                time_el = row.select_one("td:first-child")
+                title_el = row.select_one("span.title2.entry-title a")
+
+                if not title_el:
+                    continue
+
+                title = title_el.get_text(strip=True)
+                event_url = title_el["href"]
+                time = time_el.get_text(strip=True) if time_el else None
+
+                events.append(
+                    {
+                        "title": title,
+                        "time": time,
+                        "url": event_url,
+                        "source": "sf.funcheap.com",
+                    }
+                )
+
+        except Exception as e:
+            print(f"Error on page {page_num}: {e}")
+            break
+
+    print(f"Scraped {len(events)} total events")
     return events
 
 
@@ -142,7 +168,7 @@ async def scrape_events_from_dothebay() -> List[dict]:
                 venue = venue_el.get_text(strip=True) if venue_el else None
 
                 # Extract location details
-                address_el = event_card.select_one("span[itemprop='streetAddress']")
+                address_el = event_card.select_one("meta[itemprop='streetAddress']")
                 locality_el = event_card.select_one("meta[itemprop='addressLocality']")
                 region_el = event_card.select_one("meta[itemprop='addressRegion']")
                 postal_el = event_card.select_one("meta[itemprop='postalCode']")

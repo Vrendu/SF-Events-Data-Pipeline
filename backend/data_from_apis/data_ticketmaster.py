@@ -122,22 +122,30 @@ def normalize_ticketmaster_event(event: Dict[str, Any]) -> Dict[str, Any]:
     venue = venues[0].get("name") if venues else None
     if venue and venues:
         venue_info = venues[0]
+        state = venue_info.get("state", {}).get("name", "")
         city = venue_info.get("city", {}).get("name", "")
-        state = venue_info.get("state", {}).get("stateCode", "")
-        if city or state:
-            venue = f"{venue}, {city}, {state}".strip(", ")
-    
+        location = f"{city}, {state}".strip(", ")
+      
+
     # Extract date information
     dates = event.get("dates", {})
     start = dates.get("start", {})
     date_str = start.get("dateTime") or start.get("localDate")
     
+    #extracting the full address
+    address = venue_info.get("address", {}).get("line1", "") if venues else ""
+    if address:
+        location = f"{address}, {location}" if location else address
+
+    # Extract latitude and longitude
+    latlong = venue_info.get("location", {}).get("latitude") + "," + venue_info.get("location", {}).get("longitude") if venues else None
 
 
     normalized_event = {
         "title": event.get("name"),
         "datetime": date_str,
         "venue": venue,
+        "location": location,
         "url": event.get("url"),
         "description": event.get("info") or event.get("pleaseNote"),
         "source": "Ticketmaster"
