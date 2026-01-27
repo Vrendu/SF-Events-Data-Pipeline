@@ -135,11 +135,14 @@ def normalize_ticketmaster_event(event: Dict[str, Any]) -> Dict[str, Any]:
     
     #extracting the full address
     address = venue_info.get("address", {}).get("line1", "") if venues else ""
+    
+    lat = venue_info.get("location", {}).get("latitude") if venues else ""
+    long = venue_info.get("location", {}).get("longitude") if venues else ""
+
     if address:
         location = f"{address}, {location}" if location else address
 
-    # Extract latitude and longitude
-    latlong = venue_info.get("location", {}).get("latitude") + "," + venue_info.get("location", {}).get("longitude") if venues else None
+
 
 
     normalized_event = {
@@ -147,6 +150,7 @@ def normalize_ticketmaster_event(event: Dict[str, Any]) -> Dict[str, Any]:
         "datetime": date_str,
         "venue": venue,
         "location": location,
+        "latlong": f"{lat},{long}" if lat and long else None,
         "url": event.get("url"),
         "description": event.get("info") or event.get("pleaseNote"),
         "source": "Ticketmaster"
