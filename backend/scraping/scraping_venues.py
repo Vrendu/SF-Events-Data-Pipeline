@@ -4,7 +4,6 @@ import re
 from typing import List
 from datetime import date, timedelta, datetime
 
-
 async def scrape_events_from_warfield() -> List[dict]:
     url = "https://www.thewarfieldtheatre.com/events"
     response = requests.get(url, timeout=15)
@@ -33,13 +32,19 @@ async def scrape_events_from_warfield() -> List[dict]:
             else None
         )
 
-        cleaned_time = re.sub(r"\s+", " ", raw_time).strip() if raw_time else None
+        # Create concatenated datetime string
+        datetime_str = None
+        if raw_date and raw_time:
+            datetime_str = f"{raw_date} {raw_time}"
+        elif raw_date:
+            datetime_str = raw_date
+        elif raw_time:
+            datetime_str = raw_time
 
         events.append(
             {
                 "title": raw_title,
-                "date": raw_date,
-                "time": raw_time,
+                "datetime": datetime_str,
                 "venue": venue,
                 "location": location,
                 "url": url,
@@ -48,7 +53,6 @@ async def scrape_events_from_warfield() -> List[dict]:
         )
 
     return events
-
 
 async def scrape_events_from_funcheap() -> List[dict]:
     url_base = "https://sf.funcheap.com/events"
@@ -125,24 +129,16 @@ async def scrape_events_from_dothebay() -> List[dict]:
             for event_card in soup.select("div.ds-listing.event-card"):
                 # Extract title from the link with class "ds-listing-event-title"
                 title_el = event_card.select_one("a.ds-listing-event-title")
-                title_text_el = (
-                    title_el.select_one("span.ds-listing-event-title-text")
-                    if title_el
-                    else None
-                )
+                title_text_el = title_el.select_one("span.ds-listing-event-title-text") if title_el else None
                 title = title_text_el.get_text(strip=True) if title_text_el else None
-                event_url = (
-                    title_el["href"] if title_el and title_el.get("href") else None
-                )
-
+                event_url = title_el["href"] if title_el and title_el.get("href") else None
+                
                 # Make URL absolute if it's relative
                 if event_url and not event_url.startswith("http"):
                     event_url = f"https://www.dothebay.com{event_url}"
 
                 # Extract venue name
-                venue_el = event_card.select_one(
-                    "div.ds-venue-name span[itemprop='name']"
-                )
+                venue_el = event_card.select_one("div.ds-venue-name span[itemprop='name']")
                 venue = venue_el.get_text(strip=True) if venue_el else None
 
                 # Extract location details
@@ -157,33 +153,28 @@ async def scrape_events_from_dothebay() -> List[dict]:
                 postal = postal_el.get("content", "") if postal_el else ""
 
                 # Construct full location
-                location_parts = [
-                    p for p in [street_address, locality, region, postal] if p
-                ]
+                location_parts = [p for p in [street_address, locality, region, postal] if p]
                 location = ", ".join(location_parts) if location_parts else None
 
                 # Extract date and time
                 date_el = event_card.select_one("meta[itemprop='startDate']")
                 start_date = date_el.get("datetime", "") if date_el else None
-
-                # Try to extract just date and time separately if possible
-                event_date = None
-                event_time = None
+                
+                # Create concatenated datetime string
+                datetime_str = None
                 if start_date:
                     # Format: 2026-01-25T14:00-0800
                     try:
                         dt = datetime.fromisoformat(start_date.replace("Z", "+00:00"))
-                        event_date = dt.strftime("%Y-%m-%d")
-                        event_time = dt.strftime("%H:%M")
+                        datetime_str = dt.strftime("%Y-%m-%d %H:%M")
                     except:
-                        event_date = start_date
+                        datetime_str = start_date
 
                 if title:
                     events.append(
                         {
                             "title": title,
-                            "date": event_date,
-                            "time": event_time,
+                            "datetime": datetime_str,
                             "venue": venue,
                             "location": location,
                             "url": event_url,

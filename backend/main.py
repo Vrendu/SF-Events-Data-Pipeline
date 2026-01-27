@@ -31,8 +31,7 @@ class ScrapeRequest(BaseModel):
 class Event(BaseModel):
     id: Optional[int] = None
     title: str
-    date: Optional[str] = None
-    time: Optional[str] = None
+    datetime: Optional[str] = None
     venue: Optional[str] = None
     location: Optional[str] = None
     latlong: Optional[str] = None
@@ -72,7 +71,7 @@ async def init_db():
             CREATE TABLE IF NOT EXISTS events (
                 id SERIAL PRIMARY KEY,
                 title TEXT NOT NULL,
-                date TEXT,
+                datetime TEXT,
                 venue TEXT,
                 location TEXT,
                 latlong TEXT,
@@ -83,25 +82,25 @@ async def init_db():
             """
         )
 
-        # Then, add the time column if it doesn't exist
+        # Add datetime column if it doesn't exist (for migration from old schema)
         await conn.execute(
             """
             DO $$ 
             BEGIN 
                 IF NOT EXISTS (
                     SELECT 1 FROM information_schema.columns 
-                    WHERE table_name='events' AND column_name='time'
+                    WHERE table_name='events' AND column_name='datetime'
                 ) THEN
-                    ALTER TABLE events ADD COLUMN time TEXT;
+                    ALTER TABLE events ADD COLUMN datetime TEXT;
                 END IF;
             END $$;
             """
         )
 
-        # Finally, create the unique index
+        # Create the unique index
         await conn.execute(
             """
-            CREATE UNIQUE INDEX IF NOT EXISTS idx_events_title ON events (title, date, time, venue);
+            CREATE UNIQUE INDEX IF NOT EXISTS idx_events_title ON events (title, datetime, venue);
             """
         )
     finally:
@@ -124,14 +123,13 @@ async def populate_database(events: List[dict]):
 
                 result = await conn.execute(
                     """
-                    INSERT INTO events (title, date, time, venue, location, latlong, url, description, source)
-                    VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
-                    ON CONFLICT (title, date, time, venue) 
+                    INSERT INTO events (title, datetime, venue, location, latlong, url, description, source)
+                    VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
+                    ON CONFLICT (title, datetime, venue) 
                     DO NOTHING
                     """,
                     event.get("title"),
-                    event.get("date"),
-                    event.get("time"),
+                    event.get("datetime"),
                     event.get("venue"),
                     event.get("location"),
                     event.get("latlong"),
@@ -220,8 +218,8 @@ async def retrieve_ticketmaster_events(
         results = await conn.fetch(
             """
             SELECT * FROM events
-            WHERE date >= $1 AND date <= $2 AND source = 'Ticketmaster'
-            ORDER BY date ASC
+            WHERE datetime >= $1 AND datetime <= $2 AND source = 'Ticketmaster'
+            ORDER BY datetime ASC
             """,
             start_date,
             end_date,
@@ -243,7 +241,7 @@ async def list_events(source: Optional[str] = None, limit: int = 1000):
                 """
                 SELECT * FROM events
                 WHERE source = $1
-                ORDER BY date DESC
+                ORDER BY datetime DESC
                 LIMIT $2
                 """,
                 source,
@@ -253,7 +251,7 @@ async def list_events(source: Optional[str] = None, limit: int = 1000):
             rows = await conn.fetch(
                 """
                 SELECT * FROM events
-                ORDER BY date DESC
+                ORDER BY datetime DESC
                 LIMIT $1
                 """,
                 limit,
@@ -263,8 +261,7 @@ async def list_events(source: Optional[str] = None, limit: int = 1000):
             event = Event(
                 id=row["id"],
                 title=row["title"],
-                date=row["date"],
-                time=row["time"],
+                datetime=row["datetime"],
                 venue=row["venue"],
                 location=row["location"],
                 latlong=row["latlong"],

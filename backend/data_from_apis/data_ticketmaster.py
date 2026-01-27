@@ -131,21 +131,12 @@ def normalize_ticketmaster_event(event: Dict[str, Any]) -> Dict[str, Any]:
     dates = event.get("dates", {})
     start = dates.get("start", {})
     date_str = start.get("dateTime") or start.get("localDate")
-    #convert date_str to just date and time if possible
     
-    if date_str:
-        try:
-            dt = datetime.fromisoformat(date_str)
-            date_only = dt.date().isoformat()
-            time_only = dt.time().isoformat()
-        except ValueError:
-            date_only = date_str
 
 
     normalized_event = {
         "title": event.get("name"),
-        "date": date_str,
-        "time": date_str,
+        "datetime": date_str,
         "venue": venue,
         "url": event.get("url"),
         "description": event.get("info") or event.get("pleaseNote"),
