@@ -10,7 +10,12 @@ from lxml import html
 from pydantic import BaseModel
 
 from data_from_apis.data_ticketmaster import fetch_bay_area_ticketmaster_events
-from scraping.scraping_venues import scrape_events_from_warfield, scrape_events_from_funcheap, scrape_events_from_dothebay
+from scraping.scraping_venues import (
+    scrape_events_from_warfield,
+    scrape_events_from_funcheap,
+    scrape_events_from_dothebay,
+)
+
 load_dotenv()
 
 DATABASE_URL = os.getenv("DATABASE_URL")
@@ -39,34 +44,35 @@ class Event(BaseModel):
 async def init_db():
     if not DATABASE_URL:
         raise RuntimeError("DATABASE_URL must be set in environment or .env file")
-    
+
     try:
         conn = await asyncpg.connect(DATABASE_URL)
     except asyncpg.exceptions.InvalidCatalogNameError as e:
         # Extract database name from error or DATABASE_URL
         import re
+
         db_match = re.search(r'database "([^"]+)"', str(e))
         db_name = db_match.group(1) if db_match else "unknown"
         raise RuntimeError(
             f'Database "{db_name}" does not exist. '
-            f'Please create it first:\n'
+            f"Please create it first:\n"
             f'  psql postgres -c "CREATE DATABASE \\"{db_name}\\";"\n'
-            f'Or run: ./create_database.sh'
+            f"Or run: ./create_database.sh"
         ) from e
     except Exception as e:
         raise RuntimeError(
             f"Failed to connect to database: {str(e)}\n"
             f"Make sure PostgreSQL is running and DATABASE_URL is correct."
         ) from e
-    
+
     try:
+        # First, create the table
         await conn.execute(
             """
             CREATE TABLE IF NOT EXISTS events (
                 id SERIAL PRIMARY KEY,
                 title TEXT NOT NULL,
                 date TEXT,
-                time TEXT,
                 venue TEXT,
                 location TEXT,
                 latlong TEXT,
@@ -76,6 +82,23 @@ async def init_db():
             )
             """
         )
+
+        # Then, add the time column if it doesn't exist
+        await conn.execute(
+            """
+            DO $$ 
+            BEGIN 
+                IF NOT EXISTS (
+                    SELECT 1 FROM information_schema.columns 
+                    WHERE table_name='events' AND column_name='time'
+                ) THEN
+                    ALTER TABLE events ADD COLUMN time TEXT;
+                END IF;
+            END $$;
+            """
+        )
+
+        # Finally, create the unique index
         await conn.execute(
             """
             CREATE UNIQUE INDEX IF NOT EXISTS idx_events_title ON events (title, date, time, venue);
@@ -98,7 +121,7 @@ async def populate_database(events: List[dict]):
     try:
         for event in events:
             try:
-               
+
                 result = await conn.execute(
                     """
                     INSERT INTO events (title, date, time, venue, location, latlong, url, description, source)
@@ -128,14 +151,16 @@ async def populate_database(events: List[dict]):
                 print(f"✗ Error inserting event '{event.get('title')}': {str(e)}")
                 continue
 
-        print(f"\n📊 Database summary: {inserted_count} inserted, {skipped_count} duplicates skipped")
+        print(
+            f"\n📊 Database summary: {inserted_count} inserted, {skipped_count} duplicates skipped"
+        )
     finally:
         await conn.close()
 
 
 @app.post("/scrape_events_warfield", response_model=List[Event])
-async def scrape_events_warfield(request: ScrapeRequest):
-    response = await scrape_events_from_warfield(request.url)
+async def scrape_events_warfield():
+    response = await scrape_events_from_warfield()
     await populate_database(response)
     return response
 
@@ -143,18 +168,19 @@ async def scrape_events_warfield(request: ScrapeRequest):
 @app.post("/scrape_events_funcheap", response_model=List[Event])
 async def scrape_events_funcheap(request: ScrapeRequest):
     response = await scrape_events_from_funcheap(request.url)
-    await populate_database(response)
+    # await populate_database(response)
     return response
 
+
 @app.post("/scrape_events_dothebay", response_model=List[Event])
-async def scrape_events_dothebay(request: ScrapeRequest):
-    response = await scrape_events_from_dothebay(request.url)
+async def scrape_events_dothebay():
+    response = await scrape_events_from_dothebay()
     await populate_database(response)
     return response
 
 
 @app.post("/ticketmaster")
-async def get_ticketmaster_events(  
+async def get_ticketmaster_events(
     keyword: Optional[str] = None,
     start_date: Optional[str] = None,
     end_date: Optional[str] = None,
@@ -166,7 +192,6 @@ async def get_ticketmaster_events(
 
     try:
         events = await fetch_bay_area_ticketmaster_events(
-            
             keyword=keyword,
             start_date_time=start_date,
             end_date_time=end_date,
@@ -177,20 +202,26 @@ async def get_ticketmaster_events(
             "events": events,
         }
     except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Failed to fetch Ticketmaster events: {str(e)}")
+        raise HTTPException(
+            status_code=500, detail=f"Failed to fetch Ticketmaster events: {str(e)}"
+        )
+
 
 @app.get("/get_ticketmaster_events", response_model=List[Event])
-async def get_ticketmaster_events(  
+async def retrieve_ticketmaster_events(
     keyword: Optional[str] = None,
     start_date: Optional[str] = datetime.now().strftime("%Y-%m-%d"),
-    end_date: Optional[str] = (datetime.now() + timedelta(days=120)).strftime("%Y-%m-%d"),
+    end_date: Optional[str] = (datetime.now() + timedelta(days=120)).strftime(
+        "%Y-%m-%d"
+    ),
 ):
     conn = await asyncpg.connect(DATABASE_URL)
     try:
         results = await conn.fetch(
             """
             SELECT * FROM events
-            WHERE date >= $1 AND date <= $2 AND 'Ticketmaster' = ANY(source)
+            WHERE date >= $1 AND date <= $2 AND source = 'Ticketmaster'
+            ORDER BY date ASC
             """,
             start_date,
             end_date,
@@ -211,7 +242,7 @@ async def list_events(source: Optional[str] = None, limit: int = 1000):
             rows = await conn.fetch(
                 """
                 SELECT * FROM events
-                WHERE $1 = ANY(source)
+                WHERE source = $1
                 ORDER BY date DESC
                 LIMIT $2
                 """,
@@ -233,6 +264,7 @@ async def list_events(source: Optional[str] = None, limit: int = 1000):
                 id=row["id"],
                 title=row["title"],
                 date=row["date"],
+                time=row["time"],
                 venue=row["venue"],
                 location=row["location"],
                 latlong=row["latlong"],
@@ -257,4 +289,6 @@ async def health_check():
         await conn.close()
         return {"status": "healthy", "database": "connected"}
     except Exception as e:
-        raise HTTPException(status_code=503, detail=f"Database connection failed: {str(e)}")
+        raise HTTPException(
+            status_code=503, detail=f"Database connection failed: {str(e)}"
+        )
