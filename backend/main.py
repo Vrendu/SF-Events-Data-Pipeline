@@ -120,6 +120,7 @@ async def populate_database(events: List[dict]):
     try:
         for event in events:
             try:
+              
 
                 result = await conn.execute(
                     """

@@ -4,6 +4,7 @@ import httpx
 from dotenv import load_dotenv
 from datetime import datetime, timedelta
 
+
 load_dotenv()
 
 TICKETMASTER_API_KEY = os.getenv("TICKETMASTER_API_KEY")

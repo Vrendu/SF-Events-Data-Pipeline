@@ -4,6 +4,49 @@ import re
 from typing import List
 from datetime import date, timedelta, datetime
 
+def parse_datetime_string(datetime_str):
+    """
+    Convert various datetime formats to ISO 8601 format: YYYY-MM-DDTHH:MM-TZOFFSET
+
+    Handles formats like:
+    - "Sat, Feb 14, 2026 Show\n\t\t\t\t\t8:00 PM"
+    - "2026-01-15T16:00-0800" (already in correct format)
+    """
+    if not datetime_str:
+        return None
+
+    # Clean up whitespace and newlines
+    datetime_str = " ".join(datetime_str.split())
+
+    # Check if already in ISO format
+    if re.match(r"\d{4}-\d{2}-\d{2}T\d{2}:\d{2}", datetime_str):
+        return datetime_str
+
+    # Parse format like "Sat, Feb 14, 2026 Show 8:00 PM"
+    # Remove extra words like "Show"
+    datetime_str = re.sub(r"\bShow\b", "", datetime_str).strip()
+
+    try:
+        # Try to parse the date with various formats
+        # Format: "Sat, Feb 14, 2026 8:00 PM"
+        dt = datetime.strptime(datetime_str, "%a, %b %d, %Y %I:%M %p")
+
+        # Convert to ISO 8601 format with PST timezone (-0800)
+        # Assuming Pacific Time for San Francisco events
+        iso_format = dt.strftime("%Y-%m-%dT%H:%M-0800")
+        return iso_format
+
+    except ValueError:
+        # Try alternative formats
+        try:
+            # Format without day name: "Feb 14, 2026 8:00 PM"
+            dt = datetime.strptime(datetime_str, "%b %d, %Y %I:%M %p")
+            return dt.strftime("%Y-%m-%dT%H:%M-0800")
+        except ValueError:
+            # If all parsing fails, return original
+            print(f"Could not parse datetime: {datetime_str}")
+            return datetime_str
+
 async def scrape_events_from_warfield() -> List[dict]:
     url = "https://www.thewarfieldtheatre.com/events"
     response = requests.get(url, timeout=15)
@@ -44,7 +87,7 @@ async def scrape_events_from_warfield() -> List[dict]:
         events.append(
             {
                 "title": raw_title,
-                "datetime": datetime_str,
+                "datetime": parse_datetime_string(datetime_str),
                 "venue": venue,
                 "location": location,
                 "url": url,
