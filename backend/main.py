@@ -3,6 +3,7 @@ from typing import List, Optional
 from datetime import datetime, timedelta
 
 import asyncpg
+from data_from_apis.categories import determine_categories
 import httpx
 from dotenv import load_dotenv
 from fastapi import FastAPI, HTTPException
@@ -37,6 +38,7 @@ class Event(BaseModel):
     latlong: Optional[str] = None
     url: Optional[str] = None
     description: Optional[str] = None
+    categories: Optional[List[str]] = None
     source: Optional[str] = None
 
 
@@ -77,6 +79,7 @@ async def init_db():
                 latlong TEXT,
                 url TEXT,
                 description TEXT,
+                categories TEXT[],
                 source TEXT             
             )
             """
@@ -97,11 +100,11 @@ async def init_db():
             """
         )
 
-        # Create the unique index
+        # Create the unique indexes
         await conn.execute(
             """
             CREATE UNIQUE INDEX IF NOT EXISTS idx_events_title ON events (title, datetime, venue);
-            """
+             """
         )
     finally:
         await conn.close()
@@ -120,12 +123,18 @@ async def populate_database(events: List[dict]):
     try:
         for event in events:
             try:
-              
-
+                
+                categories  = determine_categories(
+                        title=event.get("title", ""),
+                        description=event.get("description", ""),
+                        venue=event.get("venue", ""),
+                        categories=event.get("categories", []),
+                    )
+                print(f"Determined categories for '{event.get('title')}': {categories}")
                 result = await conn.execute(
                     """
-                    INSERT INTO events (title, datetime, venue, location, latlong, url, description, source)
-                    VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
+                    INSERT INTO events (title, datetime, venue, location, latlong, url, description, categories, source)
+                    VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
                     ON CONFLICT (title, datetime, venue) 
                     DO NOTHING
                     """,
@@ -136,18 +145,19 @@ async def populate_database(events: List[dict]):
                     event.get("latlong"),
                     event.get("url"),
                     event.get("description"),
+                    categories,
                     event.get("source"),
                 )
                 # Check if row was actually inserted
                 if result == "INSERT 0 1":
                     inserted_count += 1
-                    print(f"✓ Inserted: {event.get('title')}")
+                   # print(f"✓ Inserted: {event.get('title')}")
                 else:
                     skipped_count += 1
-                    print(f"○ Skipped duplicate: {event.get('title')}")
+                    #print(f"○ Skipped duplicate: {event.get('title')}")
 
             except Exception as e:
-                print(f"✗ Error inserting event '{event.get('title')}': {str(e)}")
+                #print(f"✗ Error inserting event '{event.get('title')}': {str(e)}")
                 continue
 
         print(

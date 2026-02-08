@@ -58,12 +58,14 @@ async def fetch_ticketmaster_events(
                 # Collect events from this page
                 embedded = data.get("_embedded", {})
                 events = embedded.get("events", [])
+                
                 all_events.extend(events)
                 
                 print(f"Retrieved {len(events)} events from page {page + 1}. Total so far: {len(all_events)}")
                 
                 page += 1
             
+            print("First event sample:", all_events[0] if all_events else "No events found")
             # Return response in same format as original
             return {
                 "_embedded": {"events": all_events},
@@ -142,17 +144,18 @@ def normalize_ticketmaster_event(event: Dict[str, Any]) -> Dict[str, Any]:
     if address:
         location = f"{address}, {location}" if location else address
 
-
-
+    categories = event.get("classifications", [])
+    print("Category:", categories)
 
     normalized_event = {
         "title": event.get("name"),
         "datetime": date_str,
         "venue": venue,
-        "location": location,
+        "location": location if location else None,
         "latlong": f"{lat},{long}" if lat and long else None,
         "url": event.get("url"),
         "description": event.get("info") or event.get("pleaseNote"),
+        "categories": [category.get("segment", {}).get("name") for category in categories] if categories else [event.get("name")],
         "source": "Ticketmaster"
     }
     return normalized_event

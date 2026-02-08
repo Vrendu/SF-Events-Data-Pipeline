@@ -1,8 +1,15 @@
 from bs4 import BeautifulSoup
 import requests
 import re
-from typing import List
+from typing import List, Optional, Tuple
 from datetime import date, timedelta, datetime
+from geopy.geocoders import Nominatim
+from geopy.exc import GeocoderTimedOut, GeocoderServiceError
+import os
+from dotenv import load_dotenv
+
+load_dotenv()
+
 
 def parse_datetime_string(datetime_str):
     """
@@ -47,6 +54,7 @@ def parse_datetime_string(datetime_str):
             print(f"Could not parse datetime: {datetime_str}")
             return datetime_str
 
+
 async def scrape_events_from_warfield() -> List[dict]:
     url = "https://www.thewarfieldtheatre.com/events"
     response = requests.get(url, timeout=15)
@@ -55,6 +63,11 @@ async def scrape_events_from_warfield() -> List[dict]:
     events = []
     venue = "The Warfield, San Francisco, CA"
     location = "982 Market St, San Francisco, CA 94102"
+    
+    # Geocode the venue location once
+    # lat_lng = geocode_location(location)
+    latitude = None
+    longitude = None
 
     # Both classes combined into one selector
     for event in soup.select("div.entry.warfield.clearfix"):
@@ -90,6 +103,7 @@ async def scrape_events_from_warfield() -> List[dict]:
                 "datetime": parse_datetime_string(datetime_str),
                 "venue": venue,
                 "location": location,
+                "latlong": f"{latitude},{longitude}" if latitude and longitude else None,
                 "url": url,
                 "source": "thewarfieldtheatre.com",
             }
@@ -201,7 +215,7 @@ async def scrape_events_from_dothebay() -> List[dict]:
                 title_text_el = title_el.select_one("span.ds-listing-event-title-text") if title_el else None
                 title = title_text_el.get_text(strip=True) if title_text_el else None
                 event_url = title_el["href"] if title_el and title_el.get("href") else None
-                
+
                 # Make URL absolute if it's relative
                 if event_url and not event_url.startswith("http"):
                     event_url = f"https://www.dothebay.com{event_url}"
@@ -228,7 +242,7 @@ async def scrape_events_from_dothebay() -> List[dict]:
                 # Extract date and time
                 date_el = event_card.select_one("meta[itemprop='startDate']")
                 start_date = date_el.get("datetime", "") if date_el else None
-                
+
                 # Create concatenated datetime string
                 datetime_str = None
                 if start_date:
@@ -239,15 +253,30 @@ async def scrape_events_from_dothebay() -> List[dict]:
                     except:
                         datetime_str = start_date
 
+                # After this line:
+                for event_card in soup.select("div.ds-listing.event-card"):
+                    
+                    # Extract category from the class name
+                    category = None
+                    classes = event_card.get("class", [])
+                    for cls in classes:
+                        if cls.startswith("ds-event-category-"):
+                            category = cls.replace("ds-event-category-", "")
+                            break
+
                 if title:
+                    # Geocode the location for this event in the future
+                    latitude = None
+                    longitude = None
                     events.append(
                         {
                             "title": title,
                             "datetime": datetime_str,
                             "venue": venue,
                             "location": location,
+                            "latlong": f"{latitude},{longitude}" if latitude and longitude else None,
                             "url": event_url,
-                            "source": "dothebay.com",
+                            "categories": [category] if category else None,
                         }
                     )
 
