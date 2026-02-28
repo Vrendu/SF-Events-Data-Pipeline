@@ -1,8 +1,10 @@
 import React, { useState, useEffect } from 'react';
 import './App.css';
-import EventList from './components/EventList';
+import MapPage from './components/MapPage';
+import EventListPage from './components/EventListPage';
 
 function App() {
+  const [currentPage, setCurrentPage] = useState('map'); // 'map' or 'list'
   const [events, setEvents] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
@@ -27,23 +29,17 @@ function App() {
     fetchEvents();
   }, []);
 
+  const handleNavigate = (page) => {
+    setCurrentPage(page);
+  };
+
   return (
     <div className="app">
-      <header className="header">
-        <h1>SF Events</h1>
-        <p>Discover amazing events happening in San Francisco</p>
-      </header>
-
-      <main className="main">
-        {loading && <div className="loading">Loading events...</div>}
-        {error && <div className="error">Error: {error}</div>}
-        {!loading && !error && (
-          <>
-            <div className="event-count">Found {events.length} events</div>
-            <EventList events={events} />
-          </>
-        )}
-      </main>
+      {currentPage === 'map' ? (
+        <MapPage events={events} onNavigate={handleNavigate} />
+      ) : (
+        <EventListPage onNavigate={handleNavigate} />
+      )}
     </div>
   );
 }
