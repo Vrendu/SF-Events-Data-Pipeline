@@ -6,6 +6,7 @@ from datetime import date, timedelta, datetime
 from geopy.geocoders import Nominatim
 from geopy.exc import GeocoderTimedOut, GeocoderServiceError
 import os
+import httpx
 from dotenv import load_dotenv
 
 load_dotenv()
@@ -105,6 +106,7 @@ async def scrape_events_from_warfield() -> List[dict]:
                 "location": location,
                 "latlong": f"{latitude},{longitude}" if latitude and longitude else None,
                 "url": url,
+                "categories": [],
                 "source": "thewarfieldtheatre.com",
             }
         )
@@ -255,7 +257,7 @@ async def scrape_events_from_dothebay() -> List[dict]:
 
                 # After this line:
                 for event_card in soup.select("div.ds-listing.event-card"):
-                    
+
                     # Extract category from the class name
                     category = None
                     classes = event_card.get("class", [])
@@ -285,4 +287,103 @@ async def scrape_events_from_dothebay() -> List[dict]:
             continue
 
     print(f"Scraped {len(events)} events from DoTheBay")
+    return events
+
+
+async def scrape_from_resident_advisor() -> List[dict]:
+    url = "https://ra.co/graphql"
+    today = date.today()
+
+    payload = {
+        "operationName": "GET_EVENT_LISTINGS_WITH_BUMPS",
+        "variables": {
+            "filters": {
+                "areas": {"eq": 218},
+                "listingDate": {"gte": today.strftime("%Y-%m-%d")},
+            },
+            "filterOptions": {"genre": True, "eventType": True},
+            "page": 1,
+            "pageSize": 100,
+            "sort": {
+                "listingDate": {"order": "ASCENDING"},
+                "score": {"order": "DESCENDING"},
+                "titleKeyword": {"order": "ASCENDING"},
+            },
+        },
+        "query": """
+            query GET_EVENT_LISTINGS_WITH_BUMPS($filters: FilterInputDtoInput, $filterOptions: FilterOptionsInput, $page: Int, $pageSize: Int, $sort: SortInputDtoInput) {
+                eventListingsWithBumps(filters: $filters, filterOptions: $filterOptions, page: $page, pageSize: $pageSize, sort: $sort) {
+                    eventListings {
+                        data {
+                            id
+                            listingDate
+                            event {
+                                id
+                                title
+                                date
+                                startTime
+                                endTime
+                                contentUrl
+                                venue {
+                                    name
+                                    address
+                                    lat
+                                    lon
+                                }
+                                pick {
+                                    blurb
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        """,
+    }
+
+    headers = {
+        "Content-Type": "application/json",
+        "Referer": "https://ra.co/events/us/sanfrancisco",
+        "User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36",
+    }
+
+    async with httpx.AsyncClient() as client:
+        response = await client.post(url, json=payload, headers=headers, timeout=15)
+        print("Status:", response.status_code)
+        data = response.json()
+
+    events = []
+    listings = (
+        data.get("data", {})
+        .get("eventListingsWithBumps", {})
+        .get("eventListings", {})
+        .get("data", [])
+    )
+
+    for listing in listings:
+        event = listing.get("event", {})
+        if not event:
+            continue
+
+        venue = event.get("venue") or {}
+        lat = venue.get("lat")
+        lon = venue.get("lon")
+        content_url = event.get("contentUrl", "")
+        description = (event.get("pick") or {}).get("blurb")
+
+        events.append(
+            {
+                "title": event.get("title"),
+                "datetime": event.get("startTime"),
+                "venue": venue.get("name"),
+                "location": venue.get("address"),
+                "latlong": f"{lat},{lon}" if lat and lon else None,
+                "url": f"https://ra.co{content_url}" if content_url else None,
+                "description": description,
+                "categories": [],
+                "source": "ra.co",
+            }
+        )
+
+    print(f"Scraped {len(events)} events from Resident Advisor")
     return events

@@ -11,11 +11,13 @@ from lxml import html
 from pydantic import BaseModel
 
 from data_from_apis.data_ticketmaster import fetch_bay_area_ticketmaster_events, fetch_ticketmaster_events
-from scraping.scraping_venues import (
+from scraping.scraping_main import (
     scrape_events_from_warfield,
     scrape_events_from_funcheap,
     scrape_events_from_dothebay,
+    scrape_from_resident_advisor,
 )
+
 
 load_dotenv()
 
@@ -124,12 +126,7 @@ async def populate_database(events: List[dict]):
         for event in events:
             try:
                 
-                categories  = determine_categories(
-                        title=event.get("title", ""),
-                        description=event.get("description", ""),
-                        venue=event.get("venue", ""),
-                        categories=event.get("categories", []),
-                    )
+                categories  = determine_categories(event.get("title"), event.get("description"), event.get("venue"), event.get("categories"))
                 print(f"Determined categories for '{event.get('title')}': {categories}")
                 result = await conn.execute(
                     """
@@ -188,6 +185,14 @@ async def scrape_events_dothebay():
     return response
 
 
+
+@app.post("/scrape_events_resident_advisor", response_model=List[Event])
+async def scrape_events_resident_advisor():
+    response = await scrape_from_resident_advisor()
+    #await populate_database(response)
+    return response
+
+
 @app.post("/ticketmaster")
 async def get_ticketmaster_events(
     keyword: Optional[str] = None,
@@ -217,9 +222,57 @@ async def get_ticketmaster_events(
 
 
 
+@app.get("/api/events", response_model=List[Event])
+async def get_events(source: Optional[str] = None, limit: int = 1000):
+    """Get all stored events, optionally filtered by source."""
+    if limit > 1000:
+        limit = 1000  # Cap limit to prevent abuse
+    conn = await asyncpg.connect(DATABASE_URL)
+    try:
+        if source:
+            rows = await conn.fetch(
+                """
+                SELECT * FROM events
+                WHERE source = $1
+                ORDER BY datetime DESC
+                LIMIT $2
+                """,
+                source,
+                limit,
+            )
+        else:
+            rows = await conn.fetch(
+                """
+                SELECT * FROM events
+                ORDER BY datetime DESC
+                LIMIT $1
+                """,
+                limit,
+            )
+        events = []
+        for row in rows:
+            event = Event(
+                id=row["id"],
+                title=row["title"],
+                datetime=row["datetime"],
+                venue=row["venue"],
+                location=row["location"],
+                latlong=row["latlong"],
+                url=row["url"],
+                description=row["description"],
+                source=row["source"],
+            )
+            events.append(event)
+        length = len(events)
+        print(f"Retrieved {length} events from database (source filter: {source})")
+        return events
+    finally:
+        await conn.close()
+
+
 @app.get("/events_test", response_model=List[Event])
 async def list_events(source: Optional[str] = None, limit: int = 1000):
-    """List stored events, optionally filtered by source."""
+    """List stored events, optionally filtered by source. (Deprecated: use /api/events instead)"""
     if limit > 1000:
         limit = 1000  # Cap limit to prevent abuse
     conn = await asyncpg.connect(DATABASE_URL)
