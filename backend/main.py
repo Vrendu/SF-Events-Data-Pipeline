@@ -15,8 +15,9 @@ from scraping.scraping_main import (
     scrape_events_from_warfield,
     scrape_events_from_funcheap,
     scrape_events_from_dothebay,
-    scrape_from_resident_advisor,
+    
 )
+from data_from_apis.data_resident_advisor import scrape_from_resident_advisor
 
 
 load_dotenv()
@@ -223,13 +224,29 @@ async def get_ticketmaster_events(
 
 
 @app.get("/api/events", response_model=List[Event])
-async def get_events(source: Optional[str] = None, limit: int = 1000):
+async def get_events(
+    source: Optional[str] = None,
+    on_date: Optional[str] = None,
+    limit: int = 1000,
+):
     """Get all stored events, optionally filtered by source."""
     if limit > 1000:
         limit = 1000  # Cap limit to prevent abuse
     conn = await asyncpg.connect(DATABASE_URL)
     try:
-        if source:
+        if source and on_date:
+            rows = await conn.fetch(
+                """
+                SELECT * FROM events
+                WHERE source = $1 AND datetime LIKE $2
+                ORDER BY datetime ASC
+                LIMIT $3
+                """,
+                source,
+                f"{on_date}%",
+                limit,
+            )
+        elif source:
             rows = await conn.fetch(
                 """
                 SELECT * FROM events
@@ -238,6 +255,17 @@ async def get_events(source: Optional[str] = None, limit: int = 1000):
                 LIMIT $2
                 """,
                 source,
+                limit,
+            )
+        elif on_date:
+            rows = await conn.fetch(
+                """
+                SELECT * FROM events
+                WHERE datetime LIKE $1
+                ORDER BY datetime ASC
+                LIMIT $2
+                """,
+                f"{on_date}%",
                 limit,
             )
         else:
@@ -264,7 +292,10 @@ async def get_events(source: Optional[str] = None, limit: int = 1000):
             )
             events.append(event)
         length = len(events)
-        print(f"Retrieved {length} events from database (source filter: {source})")
+        print(
+            f"Retrieved {length} events from database "
+            f"(source filter: {source}, on_date filter: {on_date})"
+        )
         return events
     finally:
         await conn.close()
