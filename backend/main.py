@@ -1,3 +1,4 @@
+import asyncio
 import os
 from typing import List, Optional
 from datetime import datetime, timedelta
@@ -10,19 +11,66 @@ from fastapi import FastAPI, HTTPException
 from lxml import html
 from pydantic import BaseModel
 
-from data_from_apis.data_ticketmaster import fetch_bay_area_ticketmaster_events, fetch_ticketmaster_events
+from data_from_apis.data_ticketmaster import (
+    fetch_bay_area_ticketmaster_events,
+    fetch_ticketmaster_events,
+)
+
 from scraping.scraping_main import (
     scrape_events_from_warfield,
     scrape_events_from_funcheap,
     scrape_events_from_dothebay,
-    
 )
 from data_from_apis.data_resident_advisor import scrape_from_resident_advisor
-
+from scraping.scraping_city_and_public import scrape_sfrecpark
 
 load_dotenv()
 
 DATABASE_URL = os.getenv("DATABASE_URL")
+
+# In-memory cache for geocoded locations to avoid redundant API calls
+_geocode_cache: dict = {}
+
+
+async def geocode_location(location: str) -> Optional[str]:
+    """
+    Given a location string, return a 'lat,long' string using
+    OpenStreetMap Nominatim (free, no API key required).
+    Returns None if the location cannot be resolved.
+    """
+    if not location or not location.strip():
+        return None
+
+    cache_key = location.strip().lower()
+    if cache_key in _geocode_cache:
+        return _geocode_cache[cache_key]
+
+    # Nominatim's ToS requires max 1 request/second
+    await asyncio.sleep(1.1)
+
+    try:
+        async with httpx.AsyncClient(timeout=10.0) as client:
+            response = await client.get(
+                "https://nominatim.openstreetmap.org/search",
+                params={"q": location, "format": "json", "limit": 1},
+                headers={"User-Agent": "EventsScraperApp/1.0"},
+            )
+            response.raise_for_status()
+            results = response.json()
+
+        if results:
+            lat = results[0]["lat"]
+            lon = results[0]["lon"]
+            latlong = f"{lat},{lon}"
+            _geocode_cache[cache_key] = latlong
+            return latlong
+
+    except Exception as e:
+        print(f"⚠️  Geocoding failed for '{location}': {e}")
+
+    _geocode_cache[cache_key] = None
+    return None
+
 
 app = FastAPI(title="Events Scraper API", version="1.0.0")
 
@@ -122,19 +170,31 @@ async def populate_database(events: List[dict]):
     conn = await asyncpg.connect(DATABASE_URL)
     inserted_count = 0
     skipped_count = 0
+    geocode_count = 0
 
     try:
         for event in events:
             try:
-                
-                categories  = determine_categories(event.get("title"), event.get("description"), event.get("venue"), event.get("categories"))
-                # print(f"Determined categories for '{event.get('title')}': {categories}")
-                result = await conn.execute(
+                # Geocode if latlong is missing but location is available
+                if not event.get("latlong") and event.get("location"):
+                    geocode_count += 1
+                    event["latlong"] = await geocode_location(event["location"])
+
+                categories = determine_categories(
+                    event.get("title"),
+                    event.get("description"),
+                    event.get("venue"),
+                    event.get("categories"),
+                )
+                row = await conn.fetchrow(
                     """
                     INSERT INTO events (title, datetime, venue, location, latlong, url, description, categories, source)
                     VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
                     ON CONFLICT (title, datetime, venue) 
-                    DO NOTHING
+                    DO UPDATE SET
+                        categories = EXCLUDED.categories || events.categories,
+                        latlong = COALESCE(events.latlong, EXCLUDED.latlong)
+                    RETURNING (xmax = 0) AS inserted
                     """,
                     event.get("title"),
                     event.get("datetime"),
@@ -146,20 +206,16 @@ async def populate_database(events: List[dict]):
                     categories,
                     event.get("source"),
                 )
-                # Check if row was actually inserted
-                if result == "INSERT 0 1":
+                if row["inserted"]:
                     inserted_count += 1
-                   # print(f"✓ Inserted: {event.get('title')}")
                 else:
                     skipped_count += 1
-                    #print(f"○ Skipped duplicate: {event.get('title')}")
 
             except Exception as e:
-                #print(f"✗ Error inserting event '{event.get('title')}': {str(e)}")
                 continue
 
         print(
-            f"\n📊 Database summary: {inserted_count} inserted, {skipped_count} duplicates skipped"
+            f"\n📊 Database summary: {inserted_count} inserted, {skipped_count} duplicates skipped, {geocode_count} geocoded"
         )
     finally:
         await conn.close()
@@ -185,6 +241,12 @@ async def scrape_events_dothebay():
     await populate_database(response)
     return response
 
+
+@app.post("/scrape_events_sfrecpark", response_model=List[Event])
+async def scrape_events_sfrecpark():
+    response = await scrape_sfrecpark()
+    #await populate_database(response)
+    return response
 
 
 @app.post("/scrape_events_resident_advisor", response_model=List[Event])
@@ -220,7 +282,6 @@ async def get_ticketmaster_events(
         raise HTTPException(
             status_code=500, detail=f"Failed to fetch Ticketmaster events: {str(e)}"
         )
-
 
 
 @app.get("/api/events", response_model=List[Event])

@@ -104,7 +104,8 @@ async def scrape_from_resident_advisor() -> List[dict]:
                 else None
             ),
             "description": None,
-            "categories": [g["name"] for g in l["event"].get("genres") or []],
+            "categories": ["Nightlife", "Music", "Concerts", "Live Music"]
+            + [g["name"] for g in l["event"].get("genres") or []],
             "source": "resident_advisor",
         }
         for l in all_listings
