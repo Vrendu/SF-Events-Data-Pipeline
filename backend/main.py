@@ -128,7 +128,7 @@ async def populate_database(events: List[dict]):
             try:
                 
                 categories  = determine_categories(event.get("title"), event.get("description"), event.get("venue"), event.get("categories"))
-                print(f"Determined categories for '{event.get('title')}': {categories}")
+                # print(f"Determined categories for '{event.get('title')}': {categories}")
                 result = await conn.execute(
                     """
                     INSERT INTO events (title, datetime, venue, location, latlong, url, description, categories, source)
@@ -190,7 +190,7 @@ async def scrape_events_dothebay():
 @app.post("/scrape_events_resident_advisor", response_model=List[Event])
 async def scrape_events_resident_advisor():
     response = await scrape_from_resident_advisor()
-    #await populate_database(response)
+    await populate_database(response)
     return response
 
 

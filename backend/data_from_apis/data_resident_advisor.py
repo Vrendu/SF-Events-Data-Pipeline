@@ -33,6 +33,10 @@ async def scrape_from_resident_advisor() -> List[dict]:
                     title
                     date
                     startTime
+                    contentUrl
+                    genres {
+                        name
+                    }
                     venue {
                       name
                       address
@@ -94,8 +98,13 @@ async def scrape_from_resident_advisor() -> List[dict]:
                 if l["event"].get("venue") and l["event"]["venue"].get("location")
                 else None
             ),
-            "url": None,
+            "url": (
+                f"https://ra.co{l['event']['contentUrl']}"
+                if l["event"].get("contentUrl")
+                else None
+            ),
             "description": None,
+            "categories": [g["name"] for g in l["event"].get("genres") or []],
             "source": "resident_advisor",
         }
         for l in all_listings
