@@ -6,7 +6,7 @@ import './MapPage.css';
 // Set your Mapbox token here
 mapboxgl.accessToken = process.env.REACT_APP_MAPBOX_TOKEN || '';
 
-function MapPage({ events, onNavigate }) {
+function MapPage({ events }) {
   const mapContainer = useRef(null);
   const map = useRef(null);
   const markersRef = useRef([]);
@@ -188,9 +188,6 @@ function MapPage({ events, onNavigate }) {
     <div className="map-page">
       <div className="map-header">
         <h1>🗺️ SF Events Map (Today)</h1>
-        <button className="nav-button" onClick={() => onNavigate('list')}>
-          📋 View List
-        </button>
       </div>
       {mapError && (
         <div className="error-banner">
