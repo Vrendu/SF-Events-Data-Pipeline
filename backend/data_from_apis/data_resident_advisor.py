@@ -5,6 +5,7 @@ from datetime import datetime, timedelta
 
 async def scrape_from_resident_advisor() -> List[dict]:
     url = "https://ra.co/graphql"
+    print("🕷️ Starting Resident Advisor scrape")
     today = datetime.now().strftime("%Y-%m-%d")
     three_month = (datetime.now() + timedelta(days=90)).strftime("%Y-%m-%d")
 
@@ -74,16 +75,12 @@ async def scrape_from_resident_advisor() -> List[dict]:
         total = data["data"]["eventListings"]["totalResults"]
         all_listings.extend(listings)
 
-        print(
-            f"Page {page}: fetched {len(listings)} events (total so far: {len(all_listings)} / {total})"
-        )
-
         if len(all_listings) >= total or len(listings) == 0:
             break
 
         page += 1
 
-    print(f"✅ Total retrieved: {len(all_listings)} events from Resident Advisor")
+    print(f"✅ Scraped {len(all_listings)} events from Resident Advisor")
 
     return [
         {

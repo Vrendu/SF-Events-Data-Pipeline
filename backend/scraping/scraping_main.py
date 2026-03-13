@@ -62,6 +62,7 @@ def parse_datetime_string(datetime_str):
 
 async def scrape_events_from_warfield() -> List[dict]:
     url = "https://www.thewarfieldtheatre.com/events"
+    print("🕷️ Starting Warfield scrape")
     response = requests.get(url, timeout=15)
     soup = BeautifulSoup(response.content, "html.parser")
 
@@ -115,10 +116,12 @@ async def scrape_events_from_warfield() -> List[dict]:
             }
         )
 
+    print(f"✅ Scraped {len(events)} events from Warfield")
     return events
 
 
 async def scrape_events_from_funcheap(max_pages: int = 5) -> List[dict]:
+    print(f"🕷️ Starting Funcheap scrape across up to {max_pages} pages")
     events = []
 
     for page_num in range(1, max_pages + 1):
@@ -128,14 +131,11 @@ async def scrape_events_from_funcheap(max_pages: int = 5) -> List[dict]:
         else:
             url = f"https://sf.funcheap.com/events/page/{page_num}"
 
-        print(f"Scraping page {page_num}: {url}")
-
         try:
             response = requests.get(url, timeout=15)
 
             # Stop if we hit a 404
             if response.status_code == 404:
-                print(f"Reached end at page {page_num}")
                 break
 
             soup = BeautifulSoup(response.content, "html.parser")
@@ -187,7 +187,7 @@ async def scrape_events_from_funcheap(max_pages: int = 5) -> List[dict]:
             print(f"Error on page {page_num}: {e}")
             break
 
-    print(f"Scraped {len(events)} total events")
+    print(f"✅ Scraped {len(events)} events from Funcheap")
     return events
 
 
@@ -206,7 +206,7 @@ def generate_dothebay_urls(days_ahead: int = 10) -> List[str]:
 
 async def scrape_events_from_dothebay() -> List[dict]:
     urls = generate_dothebay_urls(10)
-    print(f"Generated {len(urls)} URLs for DoTheBay scraping.")
+    print(f"🕷️ Starting DoTheBay scrape across {len(urls)} daily pages")
     events = []
 
     for url in urls:
@@ -260,10 +260,10 @@ async def scrape_events_from_dothebay() -> List[dict]:
                         datetime_str = start_date
 
                 # After this line:
+                category = None
                 for event_card in soup.select("div.ds-listing.event-card"):
 
                     # Extract category from the class name
-                    category = None
                     classes = event_card.get("class", [])
                     for cls in classes:
                         if cls.startswith("ds-event-category-"):
@@ -290,7 +290,7 @@ async def scrape_events_from_dothebay() -> List[dict]:
             print(f"Error scraping {url}: {str(e)}")
             continue
 
-    print(f"Scraped {len(events)} events from DoTheBay")
+    print(f"✅ Scraped {len(events)} events from DoTheBay")
     return events
 
 

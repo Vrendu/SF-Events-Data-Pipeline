@@ -1,13 +1,13 @@
 import asyncio
 import os
-from typing import List, Optional
+from typing import List, Literal, Optional
 from datetime import datetime, timedelta
 
 import asyncpg
 from data_from_apis.categories import determine_categories
 import httpx
 from dotenv import load_dotenv
-from fastapi import FastAPI, HTTPException
+from fastapi import FastAPI, HTTPException, Query
 from lxml import html
 from pydantic import BaseModel
 
@@ -49,6 +49,7 @@ async def geocode_location(location: str) -> Optional[str]:
     await asyncio.sleep(1.1)
 
     try:
+        print(f"📍 Geolocating: {location}")
         async with httpx.AsyncClient(timeout=10.0) as client:
             response = await client.get(
                 "https://nominatim.openstreetmap.org/search",
@@ -171,8 +172,17 @@ async def populate_database(events: List[dict]):
     inserted_count = 0
     skipped_count = 0
     geocode_count = 0
+    source_names = sorted(
+        source
+        for source in {event.get("source") for event in events}
+        if isinstance(source, str) and source
+    )
 
     try:
+        print(
+            f"💾 Populating database with {len(events)} events"
+            f" from {', '.join(source_names) if source_names else 'unknown sources'}"
+        )
         for event in events:
             try:
                 # Geocode if latlong is missing but location is available
@@ -287,57 +297,140 @@ async def get_ticketmaster_events(
 @app.get("/api/events", response_model=List[Event])
 async def get_events(
     source: Optional[str] = None,
+    sources: Optional[List[str]] = Query(default=None),
     on_date: Optional[str] = None,
-    limit: int = 1000,
+    start_date: Optional[str] = None,
+    end_date: Optional[str] = None,
+    title: Optional[str] = None,
+    venue: Optional[str] = None,
+    location: Optional[str] = None,
+    category: Optional[str] = None,
+    categories: Optional[List[str]] = Query(default=None),
+    q: Optional[str] = None,
+    has_latlong: Optional[bool] = None,
+    lat_min: Optional[float] = None,
+    lat_max: Optional[float] = None,
+    lon_min: Optional[float] = None,
+    lon_max: Optional[float] = None,
+    sort_by: Literal["datetime", "title", "source", "venue", "id"] = "datetime",
+    sort_order: Literal["asc", "desc"] = "asc",
+    offset: int = 0,
+    limit: Optional[int] = None,
 ):
-    """Get all stored events, optionally filtered by source."""
-    if limit > 1000:
-        limit = 1000  # Cap limit to prevent abuse
+    """
+    Flexible events query endpoint.
+
+    Supports optional filtering by source(s), date/date-range, text fields,
+    category overlap, geolocation presence/range, full-text-like query, sorting,
+    and optional pagination.
+    """
+    if offset < 0:
+        raise HTTPException(status_code=422, detail="offset must be >= 0")
+    if limit is not None and limit <= 0:
+        raise HTTPException(status_code=422, detail="limit must be > 0")
+
     conn = await asyncpg.connect(DATABASE_URL)
     try:
-        if source and on_date:
-            rows = await conn.fetch(
-                """
-                SELECT * FROM events
-                WHERE source = $1 AND datetime LIKE $2
-                ORDER BY datetime ASC
-                LIMIT $3
-                """,
-                source,
-                f"{on_date}%",
-                limit,
+        where_clauses: List[str] = []
+        params: List[object] = []
+
+        def add_param(value: object) -> str:
+            params.append(value)
+            return f"${len(params)}"
+
+        source_filters: List[str] = []
+        if source:
+            source_filters.append(source)
+        if sources:
+            source_filters.extend([s for s in sources if s])
+        if source_filters:
+            ph = add_param(source_filters)
+            where_clauses.append(f"source = ANY({ph}::text[])")
+
+        if on_date:
+            ph = add_param(f"{on_date}%")
+            where_clauses.append(f"datetime LIKE {ph}")
+        if start_date:
+            ph = add_param(start_date)
+            where_clauses.append(f"datetime >= {ph}")
+        if end_date:
+            ph = add_param(end_date)
+            where_clauses.append(f"datetime <= {ph}")
+
+        if title:
+            ph = add_param(f"%{title}%")
+            where_clauses.append(f"title ILIKE {ph}")
+        if venue:
+            ph = add_param(f"%{venue}%")
+            where_clauses.append(f"venue ILIKE {ph}")
+        if location:
+            ph = add_param(f"%{location}%")
+            where_clauses.append(f"location ILIKE {ph}")
+
+        category_filters: List[str] = []
+        if category:
+            category_filters.append(category)
+        if categories:
+            category_filters.extend([c for c in categories if c])
+        if category_filters:
+            ph = add_param(category_filters)
+            where_clauses.append(f"categories && {ph}::text[]")
+
+        if q:
+            ph = add_param(f"%{q}%")
+            where_clauses.append(
+                f"(title ILIKE {ph} OR description ILIKE {ph} OR venue ILIKE {ph} OR location ILIKE {ph})"
             )
-        elif source:
-            rows = await conn.fetch(
-                """
-                SELECT * FROM events
-                WHERE source = $1
-                ORDER BY datetime DESC
-                LIMIT $2
-                """,
-                source,
-                limit,
-            )
-        elif on_date:
-            rows = await conn.fetch(
-                """
-                SELECT * FROM events
-                WHERE datetime LIKE $1
-                ORDER BY datetime ASC
-                LIMIT $2
-                """,
-                f"{on_date}%",
-                limit,
-            )
+
+        if has_latlong is True:
+            where_clauses.append("latlong IS NOT NULL AND latlong <> ''")
+        elif has_latlong is False:
+            where_clauses.append("(latlong IS NULL OR latlong = '')")
+
+        latlong_is_numeric = "latlong ~ '^-?[0-9]+(\\.[0-9]+)?,-?[0-9]+(\\.[0-9]+)?$'"
+        lat_expr = "NULLIF(split_part(latlong, ',', 1), '')::double precision"
+        lon_expr = "NULLIF(split_part(latlong, ',', 2), '')::double precision"
+
+        if lat_min is not None:
+            ph = add_param(lat_min)
+            where_clauses.append(f"{latlong_is_numeric} AND {lat_expr} >= {ph}")
+        if lat_max is not None:
+            ph = add_param(lat_max)
+            where_clauses.append(f"{latlong_is_numeric} AND {lat_expr} <= {ph}")
+        if lon_min is not None:
+            ph = add_param(lon_min)
+            where_clauses.append(f"{latlong_is_numeric} AND {lon_expr} >= {ph}")
+        if lon_max is not None:
+            ph = add_param(lon_max)
+            where_clauses.append(f"{latlong_is_numeric} AND {lon_expr} <= {ph}")
+
+        sort_column_map = {
+            "datetime": "datetime",
+            "title": "title",
+            "source": "source",
+            "venue": "venue",
+            "id": "id",
+        }
+        sort_column = sort_column_map[sort_by]
+        sort_dir = "ASC" if sort_order == "asc" else "DESC"
+
+        query = "SELECT * FROM events"
+        if where_clauses:
+            query += " WHERE " + " AND ".join(where_clauses)
+
+        if sort_column == "datetime":
+            query += f" ORDER BY {sort_column} {sort_dir} NULLS LAST"
         else:
-            rows = await conn.fetch(
-                """
-                SELECT * FROM events
-                ORDER BY datetime DESC
-                LIMIT $1
-                """,
-                limit,
-            )
+            query += f" ORDER BY {sort_column} {sort_dir}, datetime DESC NULLS LAST"
+
+        if limit is not None:
+            limit_ph = add_param(limit)
+            query += f" LIMIT {limit_ph}"
+        if offset:
+            offset_ph = add_param(offset)
+            query += f" OFFSET {offset_ph}"
+
+        rows = await conn.fetch(query, *params)
         events = []
         for row in rows:
             event = Event(
@@ -349,14 +442,10 @@ async def get_events(
                 latlong=row["latlong"],
                 url=row["url"],
                 description=row["description"],
+                categories=row["categories"],
                 source=row["source"],
             )
             events.append(event)
-        length = len(events)
-        print(
-            f"Retrieved {length} events from database "
-            f"(source filter: {source}, on_date filter: {on_date})"
-        )
         return events
     finally:
         await conn.close()
@@ -403,8 +492,6 @@ async def list_events(source: Optional[str] = None, limit: int = 1000):
                 source=row["source"],
             )
             events.append(event)
-        length = len(events)
-        print(f"Retrieved {length} events from database (source filter: {source})")
         return events
     finally:
         await conn.close()

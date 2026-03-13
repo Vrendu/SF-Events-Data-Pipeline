@@ -153,7 +153,7 @@ async def scrape_sfrecpark_event(
 
 async def scrape_sfrecpark() -> List[Dict[str, Any]]:
     urls = await get_sfrecpark_event_urls()
-    print(f"Found {len(urls)} sfrecpark event URLs")
+    print(f"🕷️ Starting sfrecpark scrape for {len(urls)} event pages")
 
     events = []
     async with httpx.AsyncClient(timeout=15.0) as client:
@@ -162,5 +162,5 @@ async def scrape_sfrecpark() -> List[Dict[str, Any]]:
             if event:
                 events.append(event)
 
-    print(f"✅ Scraped {len(events)} sfrecpark events")
+    print(f"✅ Scraped {len(events)} events from sfrecpark")
     return events
