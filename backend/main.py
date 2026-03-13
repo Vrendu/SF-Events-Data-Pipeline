@@ -245,7 +245,7 @@ async def scrape_events_dothebay():
 @app.post("/scrape_events_sfrecpark", response_model=List[Event])
 async def scrape_events_sfrecpark():
     response = await scrape_sfrecpark()
-    #await populate_database(response)
+    await populate_database(response)
     return response
 
 

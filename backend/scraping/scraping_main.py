@@ -191,7 +191,7 @@ async def scrape_events_from_funcheap(max_pages: int = 5) -> List[dict]:
     return events
 
 
-def generate_dothebay_urls(days_ahead: int = 30) -> List[str]:
+def generate_dothebay_urls(days_ahead: int = 10) -> List[str]:
     base_url = "https://www.dothebay.com/events"
     today = date.today()
 
@@ -205,7 +205,7 @@ def generate_dothebay_urls(days_ahead: int = 30) -> List[str]:
 
 
 async def scrape_events_from_dothebay() -> List[dict]:
-    urls = generate_dothebay_urls(30)
+    urls = generate_dothebay_urls(10)
     print(f"Generated {len(urls)} URLs for DoTheBay scraping.")
     events = []
 

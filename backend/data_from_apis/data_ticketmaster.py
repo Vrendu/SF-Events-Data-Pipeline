@@ -45,7 +45,6 @@ async def fetch_ticketmaster_events(
         async with httpx.AsyncClient(timeout=20.0) as client:
             while page < total_pages:
                 params = {**base_params, "page": page}
-                print(f"Fetching Ticketmaster events - page {page + 1}/{total_pages} with params:", params)
                 
                 response = await client.get(url, params=params)
                 response.raise_for_status()
@@ -61,11 +60,8 @@ async def fetch_ticketmaster_events(
                 
                 all_events.extend(events)
                 
-                print(f"Retrieved {len(events)} events from page {page + 1}. Total so far: {len(all_events)}")
-                
                 page += 1
-            
-            print("First event sample:", all_events[0] if all_events else "No events found")
+
             # Return response in same format as original
             return {
                 "_embedded": {"events": all_events},
@@ -109,8 +105,6 @@ async def fetch_bay_area_ticketmaster_events(
         embedded = response.get("_embedded", {})
         raw_events = embedded.get("events", [])
 
-        print(f"{city}: {len(raw_events)} raw events")
-
         for event in raw_events:
             normalized_event = normalize_ticketmaster_event(event)
             events.append(normalized_event)
@@ -122,6 +116,8 @@ def normalize_ticketmaster_event(event: Dict[str, Any]) -> Dict[str, Any]:
     """Normalize a single Ticketmaster event to common format."""
     # Extract venue information
     venues = event.get("_embedded", {}).get("venues", [])
+    venue_info = {}
+    location = None
     venue = venues[0].get("name") if venues else None
     if venue and venues:
         venue_info = venues[0]
@@ -145,7 +141,6 @@ def normalize_ticketmaster_event(event: Dict[str, Any]) -> Dict[str, Any]:
         location = f"{address}, {location}" if location else address
 
     categories = event.get("classifications", [])
-    print("Category:", categories)
 
     normalized_event = {
         "title": event.get("name"),
