@@ -1,6 +1,8 @@
 import asyncio
 import os
-from typing import List, Literal, Optional
+import re
+from contextlib import asynccontextmanager
+from typing import Any, List, Literal, Optional
 from datetime import datetime, timedelta
 
 import asyncpg
@@ -30,6 +32,32 @@ DATABASE_URL = os.getenv("DATABASE_URL")
 
 # In-memory cache for geocoded locations to avoid redundant API calls
 _geocode_cache: dict = {}
+
+# Connection pool for query endpoints (created on startup).
+db_pool: Optional[asyncpg.Pool] = None
+
+
+@asynccontextmanager
+async def db_connection():
+    """
+    Yields an asyncpg connection from the pool when available; otherwise,
+    falls back to a one-off connection.
+    """
+    global db_pool
+
+    if not DATABASE_URL:
+        raise RuntimeError("DATABASE_URL must be set in environment or .env file")
+
+    if db_pool is not None:
+        async with db_pool.acquire() as conn:
+            yield conn
+        return
+
+    conn = await asyncpg.connect(DATABASE_URL)
+    try:
+        yield conn
+    finally:
+        await conn.close()
 
 
 async def geocode_location(location: str) -> Optional[str]:
@@ -92,6 +120,65 @@ class Event(BaseModel):
     description: Optional[str] = None
     categories: Optional[List[str]] = None
     source: Optional[str] = None
+
+
+class EventOut(BaseModel):
+    """
+    Response shape tailored for the existing frontend components.
+
+    The DB uses `datetime` and `categories`, but the UI expects:
+    - `date` (string) and `category` (string)
+    - `name` as a fallback for `title`
+    """
+
+    id: int
+    title: str
+    name: Optional[str] = None
+    datetime: Optional[str] = None
+    date: Optional[str] = None
+    venue: Optional[str] = None
+    location: Optional[str] = None
+    latlong: Optional[str] = None
+    url: Optional[str] = None
+    description: Optional[str] = None
+    categories: Optional[List[str]] = None
+    category: Optional[str] = None
+    source: Optional[str] = None
+
+
+_ISO_DATE_RE = re.compile(r"^\d{4}-\d{2}-\d{2}$")
+
+
+def _validate_iso_date(value: str, param_name: str) -> str:
+    if not _ISO_DATE_RE.fullmatch(value):
+        raise HTTPException(
+            status_code=400,
+            detail=f"Invalid `{param_name}`. Expected YYYY-MM-DD.",
+        )
+    return value
+
+
+def _event_row_to_out(row: Any) -> dict:
+    categories = row.get("categories")
+    category = categories[0] if categories else None
+    datetime_value = row.get("datetime")
+
+    # Frontend expects `name`, `date`, and `category`.
+    return {
+        "id": row.get("id"),
+        "title": row.get("title"),
+        "name": row.get("title"),
+        "datetime": datetime_value,
+        "date": datetime_value,
+        "venue": row.get("venue"),
+        "location": row.get("location"),
+        "latlong": row.get("latlong"),
+        "url": row.get("url"),
+        "description": row.get("description"),
+        "categories": categories,
+        "category": category,
+        "source": row.get("source"),
+    }
 
 
 async def init_db():
@@ -165,6 +252,17 @@ async def init_db():
 @app.on_event("startup")
 async def startup_event():
     await init_db()
+    global db_pool
+    # Small pool: most requests are read-heavy and short-lived.
+    db_pool = await asyncpg.create_pool(DATABASE_URL, min_size=1, max_size=10)
+
+
+@app.on_event("shutdown")
+async def shutdown_event():
+    global db_pool
+    if db_pool is not None:
+        await db_pool.close()
+        db_pool = None
 
 
 async def populate_database(events: List[dict]):
@@ -294,216 +392,187 @@ async def get_ticketmaster_events(
         )
 
 
-@app.get("/api/events", response_model=List[Event])
-async def get_events(
-    source: Optional[str] = None,
-    sources: Optional[List[str]] = Query(default=None),
-    on_date: Optional[str] = None,
-    start_date: Optional[str] = None,
-    end_date: Optional[str] = None,
-    title: Optional[str] = None,
-    venue: Optional[str] = None,
-    location: Optional[str] = None,
-    category: Optional[str] = None,
-    categories: Optional[List[str]] = Query(default=None),
-    q: Optional[str] = None,
-    has_latlong: Optional[bool] = None,
-    lat_min: Optional[float] = None,
-    lat_max: Optional[float] = None,
-    lon_min: Optional[float] = None,
-    lon_max: Optional[float] = None,
-    sort_by: Literal["datetime", "title", "source", "venue", "id"] = "datetime",
-    sort_order: Literal["asc", "desc"] = "asc",
-    offset: int = 0,
-    limit: Optional[int] = None,
+@app.get("/events", response_model=List[EventOut])
+async def list_events(
+    # UI uses `on_date` for "today events".
+    on_date: Optional[str] = Query(default=None, description="Filter by date (YYYY-MM-DD)"),
+    source: Optional[str] = Query(default=None, description="Filter by exact source"),
+    keyword: Optional[str] = Query(default=None, description="Search in title/venue/location/description/url"),
+    category: Optional[str] = Query(default=None, description="Filter by category (exact match within categories[])"),
+    venue: Optional[str] = Query(default=None, description="Filter by venue (case-insensitive substring)"),
+    start_date: Optional[str] = Query(default=None, description="Filter start (YYYY-MM-DD)"),
+    end_date: Optional[str] = Query(default=None, description="Filter end (YYYY-MM-DD)"),
+    limit: int = Query(default=100, ge=1, le=1000, description="Max events to return"),
+    offset: int = Query(default=0, ge=0, description="Pagination offset"),
+    sort: str = Query(
+        default="datetime_desc",
+        description="Sort: datetime_desc | datetime_asc | title_asc | title_desc",
+    ),
 ):
+    if on_date is not None:
+        on_date = _validate_iso_date(on_date, "on_date")
+    if start_date is not None:
+        start_date = _validate_iso_date(start_date, "start_date")
+    if end_date is not None:
+        end_date = _validate_iso_date(end_date, "end_date")
+
+    allowed_sorts = {
+        "datetime_desc": "datetime DESC NULLS LAST",
+        "datetime_asc": "datetime ASC NULLS LAST",
+        "title_asc": "title ASC NULLS LAST",
+        "title_desc": "title DESC NULLS LAST",
+    }
+    if sort not in allowed_sorts:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Invalid `sort`. Allowed: {', '.join(sorted(allowed_sorts.keys()))}",
+        )
+
+    where_clauses: List[str] = []
+    args: List[Any] = []
+
+    def add_arg(condition_template: str, value: Any) -> None:
+        # condition_template must contain exactly one `{param}` placeholder.
+        param_idx = len(args) + 1
+        where_clauses.append(condition_template.format(param=f"${param_idx}"))
+        args.append(value)
+
+    # Filters
+    if on_date is not None:
+        # datetime is stored as TEXT; prefix-matching the ISO date works across
+        # multiple timezone formats (e.g. 2026-05-15T... and 2026-05-15 ...).
+        add_arg("(datetime IS NOT NULL AND LEFT(datetime, 10) = {param})", on_date)
+
+    if start_date is not None:
+        add_arg("(datetime IS NOT NULL AND LEFT(datetime, 10) >= {param})", start_date)
+    if end_date is not None:
+        add_arg("(datetime IS NOT NULL AND LEFT(datetime, 10) <= {param})", end_date)
+
+    if source is not None:
+        add_arg("source = {param}", source)
+
+    if venue is not None:
+        add_arg("(venue ILIKE {param})", f"%{venue}%")
+
+    if keyword is not None:
+        kw = f"%{keyword}%"
+        where_clauses.append(
+            "("
+            "title ILIKE {param} OR "
+            "venue ILIKE {param} OR "
+            "location ILIKE {param} OR "
+            "description ILIKE {param} OR "
+            "url ILIKE {param}"
+            ")".format(param="{param}")
+        )
+        # Replace the `{param}` placeholder used above with the correct positional $N.
+        param_idx = len(args) + 1
+        where_clauses[-1] = where_clauses[-1].format(param=f"${param_idx}")
+        args.append(kw)
+
+    if category is not None:
+        # `categories` is a TEXT[] column.
+        add_arg("{param} = ANY(categories)", category)
+
+    where_sql = " AND ".join(where_clauses) if where_clauses else "TRUE"
+
+    order_by_sql = allowed_sorts[sort]
+
+    select_columns = """
+        id,
+        title,
+        datetime,
+        venue,
+        location,
+        latlong,
+        url,
+        description,
+        categories,
+        source
     """
-    Flexible events query endpoint.
 
-    Supports optional filtering by source(s), date/date-range, text fields,
-    category overlap, geolocation presence/range, full-text-like query, sorting,
-    and optional pagination.
-    """
-    if offset < 0:
-        raise HTTPException(status_code=422, detail="offset must be >= 0")
-    if limit is not None and limit <= 0:
-        raise HTTPException(status_code=422, detail="limit must be > 0")
+    base_from = f"FROM events WHERE {where_sql}"
 
-    conn = await asyncpg.connect(DATABASE_URL)
-    try:
-        where_clauses: List[str] = []
-        params: List[object] = []
+    async with db_connection() as conn:
+        total_query = f"SELECT COUNT(*) {base_from}"
+        total_count = await conn.fetchval(total_query, *args)
 
-        def add_param(value: object) -> str:
-            params.append(value)
-            return f"${len(params)}"
+        limit_param = len(args) + 1
+        offset_param = len(args) + 2
+        events_query = (
+            f"SELECT {select_columns} {base_from} "
+            f"ORDER BY {order_by_sql} "
+            f"LIMIT ${limit_param} OFFSET ${offset_param}"
+        )
+        rows = await conn.fetch(events_query, *args, limit, offset)
 
-        source_filters: List[str] = []
-        if source:
-            source_filters.append(source)
-        if sources:
-            source_filters.extend([s for s in sources if s])
-        if source_filters:
-            ph = add_param(source_filters)
-            where_clauses.append(f"source = ANY({ph}::text[])")
-
-        if on_date:
-            ph = add_param(f"{on_date}%")
-            where_clauses.append(f"datetime LIKE {ph}")
-        if start_date:
-            ph = add_param(start_date)
-            where_clauses.append(f"datetime >= {ph}")
-        if end_date:
-            ph = add_param(end_date)
-            where_clauses.append(f"datetime <= {ph}")
-
-        if title:
-            ph = add_param(f"%{title}%")
-            where_clauses.append(f"title ILIKE {ph}")
-        if venue:
-            ph = add_param(f"%{venue}%")
-            where_clauses.append(f"venue ILIKE {ph}")
-        if location:
-            ph = add_param(f"%{location}%")
-            where_clauses.append(f"location ILIKE {ph}")
-
-        category_filters: List[str] = []
-        if category:
-            category_filters.append(category)
-        if categories:
-            category_filters.extend([c for c in categories if c])
-        if category_filters:
-            ph = add_param(category_filters)
-            where_clauses.append(f"categories && {ph}::text[]")
-
-        if q:
-            ph = add_param(f"%{q}%")
-            where_clauses.append(
-                f"(title ILIKE {ph} OR description ILIKE {ph} OR venue ILIKE {ph} OR location ILIKE {ph})"
-            )
-
-        if has_latlong is True:
-            where_clauses.append("latlong IS NOT NULL AND latlong <> ''")
-        elif has_latlong is False:
-            where_clauses.append("(latlong IS NULL OR latlong = '')")
-
-        latlong_is_numeric = "latlong ~ '^-?[0-9]+(\\.[0-9]+)?,-?[0-9]+(\\.[0-9]+)?$'"
-        lat_expr = "NULLIF(split_part(latlong, ',', 1), '')::double precision"
-        lon_expr = "NULLIF(split_part(latlong, ',', 2), '')::double precision"
-
-        if lat_min is not None:
-            ph = add_param(lat_min)
-            where_clauses.append(f"{latlong_is_numeric} AND {lat_expr} >= {ph}")
-        if lat_max is not None:
-            ph = add_param(lat_max)
-            where_clauses.append(f"{latlong_is_numeric} AND {lat_expr} <= {ph}")
-        if lon_min is not None:
-            ph = add_param(lon_min)
-            where_clauses.append(f"{latlong_is_numeric} AND {lon_expr} >= {ph}")
-        if lon_max is not None:
-            ph = add_param(lon_max)
-            where_clauses.append(f"{latlong_is_numeric} AND {lon_expr} <= {ph}")
-
-        sort_column_map = {
-            "datetime": "datetime",
-            "title": "title",
-            "source": "source",
-            "venue": "venue",
-            "id": "id",
-        }
-        sort_column = sort_column_map[sort_by]
-        sort_dir = "ASC" if sort_order == "asc" else "DESC"
-
-        query = "SELECT * FROM events"
-        if where_clauses:
-            query += " WHERE " + " AND ".join(where_clauses)
-
-        if sort_column == "datetime":
-            query += f" ORDER BY {sort_column} {sort_dir} NULLS LAST"
-        else:
-            query += f" ORDER BY {sort_column} {sort_dir}, datetime DESC NULLS LAST"
-
-        if limit is not None:
-            limit_ph = add_param(limit)
-            query += f" LIMIT {limit_ph}"
-        if offset:
-            offset_ph = add_param(offset)
-            query += f" OFFSET {offset_ph}"
-
-        rows = await conn.fetch(query, *params)
-        events = []
-        for row in rows:
-            event = Event(
-                id=row["id"],
-                title=row["title"],
-                datetime=row["datetime"],
-                venue=row["venue"],
-                location=row["location"],
-                latlong=row["latlong"],
-                url=row["url"],
-                description=row["description"],
-                categories=row["categories"],
-                source=row["source"],
-            )
-            events.append(event)
-        return events
-    finally:
-        await conn.close()
+    # Note: frontend currently only consumes the array (no metadata).
+    # Still, the query is built in a way that lets us easily add metadata later.
+    _ = total_count
+    return [_event_row_to_out(r) for r in rows]
 
 
-@app.get("/events_test", response_model=List[Event])
-async def list_events(source: Optional[str] = None, limit: int = 1000):
-    """List stored events, optionally filtered by source. (Deprecated: use /api/events instead)"""
-    if limit > 1000:
-        limit = 1000  # Cap limit to prevent abuse
-    conn = await asyncpg.connect(DATABASE_URL)
-    try:
-        if source:
-            rows = await conn.fetch(
-                """
-                SELECT * FROM events
-                WHERE source = $1
-                ORDER BY datetime DESC
-                LIMIT $2
-                """,
-                source,
-                limit,
-            )
-        else:
-            rows = await conn.fetch(
-                """
-                SELECT * FROM events
-                ORDER BY datetime DESC
-                LIMIT $1
-                """,
-                limit,
-            )
-        events = []
-        for row in rows:
-            event = Event(
-                id=row["id"],
-                title=row["title"],
-                datetime=row["datetime"],
-                venue=row["venue"],
-                location=row["location"],
-                latlong=row["latlong"],
-                url=row["url"],
-                description=row["description"],
-                source=row["source"],
-            )
-            events.append(event)
-        return events
-    finally:
-        await conn.close()
+# Frontend compatibility: React calls `/api/events` (CRA proxy forwards paths as-is).
+@app.get("/api/events", response_model=List[EventOut], include_in_schema=False)
+async def list_events_api(
+    on_date: Optional[str] = Query(default=None, description="Filter by date (YYYY-MM-DD)"),
+    source: Optional[str] = Query(default=None, description="Filter by exact source"),
+    keyword: Optional[str] = Query(default=None, description="Search in title/venue/location/description/url"),
+    category: Optional[str] = Query(default=None, description="Filter by category (exact match within categories[])"),
+    venue: Optional[str] = Query(default=None, description="Filter by venue (case-insensitive substring)"),
+    start_date: Optional[str] = Query(default=None, description="Filter start (YYYY-MM-DD)"),
+    end_date: Optional[str] = Query(default=None, description="Filter end (YYYY-MM-DD)"),
+    limit: int = Query(default=100, ge=1, le=1000, description="Max events to return"),
+    offset: int = Query(default=0, ge=0, description="Pagination offset"),
+    sort: str = Query(
+        default="datetime_desc",
+        description="Sort: datetime_desc | datetime_asc | title_asc | title_desc",
+    ),
+):
+    return await list_events(
+        on_date=on_date,
+        source=source,
+        keyword=keyword,
+        category=category,
+        venue=venue,
+        start_date=start_date,
+        end_date=end_date,
+        limit=limit,
+        offset=offset,
+        sort=sort,
+    )
+
+
+@app.get("/events/{event_id}", response_model=EventOut)
+async def get_event(event_id: int):
+    async with db_connection() as conn:
+        row = await conn.fetchrow(
+            """
+            SELECT
+                id, title, datetime, venue, location, latlong, url, description, categories, source
+            FROM events
+            WHERE id = $1
+            """,
+            event_id,
+        )
+
+    if row is None:
+        raise HTTPException(status_code=404, detail="Event not found")
+
+    return _event_row_to_out(row)
+
+
+@app.get("/api/events/{event_id}", response_model=EventOut, include_in_schema=False)
+async def get_event_api(event_id: int):
+    return await get_event(event_id)
 
 
 @app.get("/health")
 async def health_check():
     """Health check endpoint to verify database connectivity."""
     try:
-        conn = await asyncpg.connect(DATABASE_URL)
-        await conn.execute("SELECT 1")
-        await conn.close()
+        async with db_connection() as conn:
+            await conn.execute("SELECT 1")
         return {"status": "healthy", "database": "connected"}
     except Exception as e:
         raise HTTPException(

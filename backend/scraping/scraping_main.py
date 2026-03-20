@@ -260,15 +260,13 @@ async def scrape_events_from_dothebay() -> List[dict]:
                         datetime_str = start_date
 
                 # After this line:
+                # Extract category from the current event_card's classes
                 category = None
-                for event_card in soup.select("div.ds-listing.event-card"):
-
-                    # Extract category from the class name
-                    classes = event_card.get("class", [])
-                    for cls in classes:
-                        if cls.startswith("ds-event-category-"):
-                            category = cls.replace("ds-event-category-", "")
-                            break
+                classes = event_card.get("class", [])
+                for cls in classes:
+                    if cls.startswith("ds-event-category-"):
+                        category = cls.replace("ds-event-category-", "")
+                        break
 
                 if title:
                     # Geocode the location for this event in the future
@@ -283,6 +281,7 @@ async def scrape_events_from_dothebay() -> List[dict]:
                             "latlong": f"{latitude},{longitude}" if latitude and longitude else None,
                             "url": event_url,
                             "categories": [category] if category else None,
+                            "source": "dothebay.com",
                         }
                     )
 
