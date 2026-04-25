@@ -294,6 +294,8 @@ async def populate_database(events: List[dict]):
                     event.get("venue"),
                     event.get("categories"),
                 )
+                # i want each category to be all lowercase 
+                categories = [category.lower() for category in categories]
                 row = await conn.fetchrow(
                     """
                     INSERT INTO events (title, datetime, venue, location, latlong, url, description, categories, source)
