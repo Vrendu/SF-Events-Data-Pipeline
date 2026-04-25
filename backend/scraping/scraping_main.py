@@ -10,7 +10,6 @@ from geopy.exc import GeocoderTimedOut, GeocoderServiceError
 import os
 import httpx
 from dotenv import load_dotenv
-import cloudscraper
 
 
 load_dotenv()
