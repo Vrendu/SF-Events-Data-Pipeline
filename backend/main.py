@@ -37,6 +37,15 @@ _geocode_cache: dict = {}
 db_pool: Optional[asyncpg.Pool] = None
 
 
+# At the top, add a helper
+def _get_connect_kwargs() -> dict:
+    """Add SSL for Neon/remote connections, skip for local."""
+    url = DATABASE_URL or ""
+    if "neon.tech" in url or "sslmode=require" in url:
+        return {"ssl": "require"}
+    return {}
+
+
 @asynccontextmanager
 async def db_connection():
     """
@@ -53,7 +62,7 @@ async def db_connection():
             yield conn
         return
 
-    conn = await asyncpg.connect(DATABASE_URL)
+    conn = await asyncpg.connect(DATABASE_URL, **_get_connect_kwargs())
     try:
         yield conn
     finally:
@@ -186,7 +195,7 @@ async def init_db():
         raise RuntimeError("DATABASE_URL must be set in environment or .env file")
 
     try:
-        conn = await asyncpg.connect(DATABASE_URL)
+        conn = await asyncpg.connect(DATABASE_URL, **_get_connect_kwargs())
     except asyncpg.exceptions.InvalidCatalogNameError as e:
         # Extract database name from error or DATABASE_URL
         import re
@@ -266,7 +275,7 @@ async def shutdown_event():
 
 
 async def populate_database(events: List[dict]):
-    conn = await asyncpg.connect(DATABASE_URL)
+    conn = await asyncpg.connect(DATABASE_URL, **_get_connect_kwargs())
     inserted_count = 0
     skipped_count = 0
     geocode_count = 0
