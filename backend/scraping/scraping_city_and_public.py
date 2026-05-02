@@ -28,7 +28,7 @@ def _split_name_from_address(text: str) -> tuple[Optional[str], Optional[str]]:
 async def get_sfrecpark_event_urls() -> List[str]:
     base_url = "https://sfrecpark.org"
     start_date = datetime.now().strftime("%m/%d/%Y")
-    end_date = (datetime.now() + timedelta(days=60)).strftime("%m/%d/%Y")
+    end_date = (datetime.now() + timedelta(days=15)).strftime("%m/%d/%Y")
 
     calendar_url = (
         f"{base_url}/calendar.aspx"

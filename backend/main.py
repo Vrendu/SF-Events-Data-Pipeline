@@ -9,7 +9,8 @@ import asyncpg
 from data_from_apis.categories import determine_categories
 import httpx
 from dotenv import load_dotenv
-from fastapi import FastAPI, HTTPException, Query
+from fastapi import Depends, FastAPI, HTTPException, Query, Security
+from fastapi.security import APIKeyHeader
 from lxml import html
 from pydantic import BaseModel
 
@@ -30,6 +31,27 @@ load_dotenv()
 
 DATABASE_URL = os.getenv("DATABASE_URL")
 
+_SCRAPER_API_KEY = os.getenv("SCRAPER_API_KEY")
+_READ_API_KEY = os.getenv("READ_API_KEY")
+
+if not _SCRAPER_API_KEY:
+    raise RuntimeError("SCRAPER_API_KEY must be set in environment or .env file")
+if not _READ_API_KEY:
+    raise RuntimeError("READ_API_KEY must be set in environment or .env file")
+
+_api_key_header = APIKeyHeader(name="X-API-Key", auto_error=True)
+
+
+async def verify_scraper_key(key: str = Security(_api_key_header)) -> None:
+    if key != _SCRAPER_API_KEY:
+        raise HTTPException(status_code=401, detail="Invalid or missing API key")
+
+
+async def verify_read_key(key: str = Security(_api_key_header)) -> None:
+    if key != _READ_API_KEY:
+        raise HTTPException(status_code=401, detail="Invalid or missing API key")
+
+
 # In-memory cache for geocoded locations to avoid redundant API calls
 _geocode_cache: dict = {}
 
@@ -37,7 +59,6 @@ _geocode_cache: dict = {}
 db_pool: Optional[asyncpg.Pool] = None
 
 
-# At the top, add a helper
 def _get_connect_kwargs() -> dict:
     """Add SSL for Neon/remote connections, skip for local."""
     url = DATABASE_URL or ""
@@ -197,7 +218,6 @@ async def init_db():
     try:
         conn = await asyncpg.connect(DATABASE_URL, **_get_connect_kwargs())
     except asyncpg.exceptions.InvalidCatalogNameError as e:
-        # Extract database name from error or DATABASE_URL
         import re
 
         db_match = re.search(r'database "([^"]+)"', str(e))
@@ -215,9 +235,7 @@ async def init_db():
         ) from e
 
     try:
-        # First, create the table
-        await conn.execute(
-            """
+        await conn.execute("""
             CREATE TABLE IF NOT EXISTS events (
                 id SERIAL PRIMARY KEY,
                 title TEXT NOT NULL,
@@ -230,12 +248,9 @@ async def init_db():
                 categories TEXT[],
                 source TEXT             
             )
-            """
-        )
+            """)
 
-        # Add datetime column if it doesn't exist (for migration from old schema)
-        await conn.execute(
-            """
+        await conn.execute("""
             DO $$ 
             BEGIN 
                 IF NOT EXISTS (
@@ -245,15 +260,11 @@ async def init_db():
                     ALTER TABLE events ADD COLUMN datetime TEXT;
                 END IF;
             END $$;
-            """
-        )
+            """)
 
-        # Create the unique indexes
-        await conn.execute(
-            """
+        await conn.execute("""
             CREATE UNIQUE INDEX IF NOT EXISTS idx_events_title ON events (title, datetime, venue);
-             """
-        )
+             """)
     finally:
         await conn.close()
 
@@ -262,7 +273,6 @@ async def init_db():
 async def startup_event():
     await init_db()
     global db_pool
-    # Small pool: most requests are read-heavy and short-lived.
     db_pool = await asyncpg.create_pool(DATABASE_URL, min_size=1, max_size=10)
 
 
@@ -292,7 +302,6 @@ async def populate_database(events: List[dict]):
         )
         for event in events:
             try:
-                # Geocode if latlong is missing but location is available
                 if not event.get("latlong") and event.get("location"):
                     geocode_count += 1
                     event["latlong"] = await geocode_location(event["location"])
@@ -303,7 +312,6 @@ async def populate_database(events: List[dict]):
                     event.get("venue"),
                     event.get("categories"),
                 )
-                # i want each category to be all lowercase 
                 categories = [category.lower() for category in categories]
                 row = await conn.fetchrow(
                     """
@@ -340,42 +348,67 @@ async def populate_database(events: List[dict]):
         await conn.close()
 
 
-@app.post("/scrape_events_warfield", response_model=List[Event])
+# ---------------------------------------------------------------------------
+# Scraping endpoints — protected by SCRAPER_API_KEY
+# ---------------------------------------------------------------------------
+
+
+@app.post(
+    "/scrape_events_warfield",
+    response_model=List[Event],
+    dependencies=[Depends(verify_scraper_key)],
+)
 async def scrape_events_warfield():
     response = await scrape_events_from_warfield()
     await populate_database(response)
     return response
 
 
-@app.post("/scrape_events_funcheap", response_model=List[Event])
+@app.post(
+    "/scrape_events_funcheap",
+    response_model=List[Event],
+    dependencies=[Depends(verify_scraper_key)],
+)
 async def scrape_events_funcheap():
     response = await scrape_events_from_funcheap()
     # await populate_database(response)
     return response
 
 
-@app.post("/scrape_events_dothebay", response_model=List[Event])
+@app.post(
+    "/scrape_events_dothebay",
+    response_model=List[Event],
+    dependencies=[Depends(verify_scraper_key)],
+)
 async def scrape_events_dothebay():
     response = await scrape_events_from_dothebay()
     await populate_database(response)
     return response
 
 
-@app.post("/scrape_events_sfrecpark", response_model=List[Event])
+@app.post(
+    "/scrape_events_sfrecpark",
+    response_model=List[Event],
+    dependencies=[Depends(verify_scraper_key)],
+)
 async def scrape_events_sfrecpark():
     response = await scrape_sfrecpark()
     await populate_database(response)
     return response
 
 
-@app.post("/scrape_events_resident_advisor", response_model=List[Event])
+@app.post(
+    "/scrape_events_resident_advisor",
+    response_model=List[Event],
+    dependencies=[Depends(verify_scraper_key)],
+)
 async def scrape_events_resident_advisor():
     response = await scrape_from_resident_advisor()
     await populate_database(response)
     return response
 
 
-@app.post("/ticketmaster")
+@app.post("/ticketmaster", dependencies=[Depends(verify_scraper_key)])
 async def get_ticketmaster_events(
     keyword: Optional[str] = None,
     start_date: Optional[str] = None,
@@ -403,16 +436,36 @@ async def get_ticketmaster_events(
         )
 
 
-@app.get("/events", response_model=List[EventOut])
+# ---------------------------------------------------------------------------
+# Read endpoints — protected by READ_API_KEY
+# ---------------------------------------------------------------------------
+
+
+@app.get(
+    "/events",
+    response_model=List[EventOut],
+    dependencies=[Depends(verify_read_key)],
+)
 async def list_events(
-    # UI uses `on_date` for "today events".
-    on_date: Optional[str] = Query(default=None, description="Filter by date (YYYY-MM-DD)"),
+    on_date: Optional[str] = Query(
+        default=None, description="Filter by date (YYYY-MM-DD)"
+    ),
     source: Optional[str] = Query(default=None, description="Filter by exact source"),
-    keyword: Optional[str] = Query(default=None, description="Search in title/venue/location/description/url"),
-    category: Optional[str] = Query(default=None, description="Filter by category (exact match within categories[])"),
-    venue: Optional[str] = Query(default=None, description="Filter by venue (case-insensitive substring)"),
-    start_date: Optional[str] = Query(default=None, description="Filter start (YYYY-MM-DD)"),
-    end_date: Optional[str] = Query(default=None, description="Filter end (YYYY-MM-DD)"),
+    keyword: Optional[str] = Query(
+        default=None, description="Search in title/venue/location/description/url"
+    ),
+    category: Optional[str] = Query(
+        default=None, description="Filter by category (exact match within categories[])"
+    ),
+    venue: Optional[str] = Query(
+        default=None, description="Filter by venue (case-insensitive substring)"
+    ),
+    start_date: Optional[str] = Query(
+        default=None, description="Filter start (YYYY-MM-DD)"
+    ),
+    end_date: Optional[str] = Query(
+        default=None, description="Filter end (YYYY-MM-DD)"
+    ),
     limit: int = Query(default=100, ge=1, le=1000, description="Max events to return"),
     offset: int = Query(default=0, ge=0, description="Pagination offset"),
     sort: str = Query(
@@ -443,15 +496,11 @@ async def list_events(
     args: List[Any] = []
 
     def add_arg(condition_template: str, value: Any) -> None:
-        # condition_template must contain exactly one `{param}` placeholder.
         param_idx = len(args) + 1
         where_clauses.append(condition_template.format(param=f"${param_idx}"))
         args.append(value)
 
-    # Filters
     if on_date is not None:
-        # datetime is stored as TEXT; prefix-matching the ISO date works across
-        # multiple timezone formats (e.g. 2026-05-15T... and 2026-05-15 ...).
         add_arg("(datetime IS NOT NULL AND LEFT(datetime, 10) = {param})", on_date)
 
     if start_date is not None:
@@ -476,17 +525,14 @@ async def list_events(
             "url ILIKE {param}"
             ")".format(param="{param}")
         )
-        # Replace the `{param}` placeholder used above with the correct positional $N.
         param_idx = len(args) + 1
         where_clauses[-1] = where_clauses[-1].format(param=f"${param_idx}")
         args.append(kw)
 
     if category is not None:
-        # `categories` is a TEXT[] column.
         add_arg("{param} = ANY(categories)", category)
 
     where_sql = " AND ".join(where_clauses) if where_clauses else "TRUE"
-
     order_by_sql = allowed_sorts[sort]
 
     select_columns = """
@@ -517,22 +563,36 @@ async def list_events(
         )
         rows = await conn.fetch(events_query, *args, limit, offset)
 
-    # Note: frontend currently only consumes the array (no metadata).
-    # Still, the query is built in a way that lets us easily add metadata later.
     _ = total_count
     return [_event_row_to_out(r) for r in rows]
 
 
-# Frontend compatibility: React calls `/api/events` (CRA proxy forwards paths as-is).
-@app.get("/api/events", response_model=List[EventOut], include_in_schema=False)
+@app.get(
+    "/api/events",
+    response_model=List[EventOut],
+    include_in_schema=False,
+    dependencies=[Depends(verify_read_key)],
+)
 async def list_events_api(
-    on_date: Optional[str] = Query(default=None, description="Filter by date (YYYY-MM-DD)"),
+    on_date: Optional[str] = Query(
+        default=None, description="Filter by date (YYYY-MM-DD)"
+    ),
     source: Optional[str] = Query(default=None, description="Filter by exact source"),
-    keyword: Optional[str] = Query(default=None, description="Search in title/venue/location/description/url"),
-    category: Optional[str] = Query(default=None, description="Filter by category (exact match within categories[])"),
-    venue: Optional[str] = Query(default=None, description="Filter by venue (case-insensitive substring)"),
-    start_date: Optional[str] = Query(default=None, description="Filter start (YYYY-MM-DD)"),
-    end_date: Optional[str] = Query(default=None, description="Filter end (YYYY-MM-DD)"),
+    keyword: Optional[str] = Query(
+        default=None, description="Search in title/venue/location/description/url"
+    ),
+    category: Optional[str] = Query(
+        default=None, description="Filter by category (exact match within categories[])"
+    ),
+    venue: Optional[str] = Query(
+        default=None, description="Filter by venue (case-insensitive substring)"
+    ),
+    start_date: Optional[str] = Query(
+        default=None, description="Filter start (YYYY-MM-DD)"
+    ),
+    end_date: Optional[str] = Query(
+        default=None, description="Filter end (YYYY-MM-DD)"
+    ),
     limit: int = Query(default=100, ge=1, le=1000, description="Max events to return"),
     offset: int = Query(default=0, ge=0, description="Pagination offset"),
     sort: str = Query(
@@ -554,7 +614,11 @@ async def list_events_api(
     )
 
 
-@app.get("/events/{event_id}", response_model=EventOut)
+@app.get(
+    "/events/{event_id}",
+    response_model=EventOut,
+    dependencies=[Depends(verify_read_key)],
+)
 async def get_event(event_id: int):
     async with db_connection() as conn:
         row = await conn.fetchrow(
@@ -573,9 +637,19 @@ async def get_event(event_id: int):
     return _event_row_to_out(row)
 
 
-@app.get("/api/events/{event_id}", response_model=EventOut, include_in_schema=False)
+@app.get(
+    "/api/events/{event_id}",
+    response_model=EventOut,
+    include_in_schema=False,
+    dependencies=[Depends(verify_read_key)],
+)
 async def get_event_api(event_id: int):
     return await get_event(event_id)
+
+
+# ---------------------------------------------------------------------------
+# Health check — no auth required
+# ---------------------------------------------------------------------------
 
 
 @app.get("/health")
