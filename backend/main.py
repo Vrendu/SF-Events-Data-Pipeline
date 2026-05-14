@@ -649,7 +649,7 @@ async def get_event_api(event_id: int):
 
 @app.delete(
     "/events/{event_id}",
-    dependencies=[Depends(verify_scraper_key)],
+    dependencies=[Depends(verify_read_key)],
 )
 async def delete_event(event_id: int):
     async with db_connection() as conn:
@@ -664,7 +664,7 @@ async def delete_event(event_id: int):
 # I want a function to prune everything older than 2 weeks from the database, to keep it clean and relevant. This can be run as a scheduled task.
 @app.delete(
     "/events/prune_old",
-    dependencies=[Depends(verify_scraper_key)],
+    dependencies=[Depends(verify_read_key)],
 )
 async def prune_old_events():
     cutoff_date = (datetime.now() - timedelta(days=14)).strftime("%Y-%m-%dT%H:%M:%SZ")
