@@ -441,6 +441,24 @@ async def get_ticketmaster_events(
 # ---------------------------------------------------------------------------
 
 
+@app.delete(
+    "/events/prune_old",
+    dependencies=[Depends(verify_read_key)],
+)
+async def prune_old_events():
+    cutoff_date = (datetime.now() - timedelta(days=14)).strftime("%Y-%m-%dT%H:%M:%SZ")
+    async with db_connection() as conn:
+        result = await conn.execute(
+            """
+            DELETE FROM events
+            WHERE datetime IS NOT NULL AND datetime < $1
+            """,
+            cutoff_date,
+        )
+    deleted_count = int(result.split(" ")[-1])  # e.g. "DELETE 5"
+    return {"deleted": deleted_count, "cutoff_date": cutoff_date}
+
+
 @app.get(
     "/events",
     response_model=List[EventOut],
@@ -647,37 +665,8 @@ async def get_event_api(event_id: int):
     return await get_event(event_id)
 
 
-@app.delete(
-    "/events/{event_id}",
-    dependencies=[Depends(verify_read_key)],
-)
-async def delete_event(event_id: int):
-    async with db_connection() as conn:
-        await conn.execute(
-            """
-            DELETE FROM events
-            WHERE id = $1
-            """,
-            event_id,
-        )
-
 # I want a function to prune everything older than 2 weeks from the database, to keep it clean and relevant. This can be run as a scheduled task.
-@app.delete(
-    "/events/prune_old",
-    dependencies=[Depends(verify_read_key)],
-)
-async def prune_old_events():
-    cutoff_date = (datetime.now() - timedelta(days=14)).strftime("%Y-%m-%dT%H:%M:%SZ")
-    async with db_connection() as conn:
-        result = await conn.execute(
-            """
-            DELETE FROM events
-            WHERE datetime IS NOT NULL AND datetime < $1
-            """,
-            cutoff_date,
-        )
-    deleted_count = int(result.split(" ")[-1])  # e.g. "DELETE 5"
-    return {"deleted": deleted_count, "cutoff_date": cutoff_date}
+
 
 # ---------------------------------------------------------------------------
 # Health check — no auth required
