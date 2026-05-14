@@ -69,5 +69,5 @@ jobs:
       - name: Prune events older than 2 weeks
         run: |
           curl -f -X DELETE "${{ secrets.SCRAPER_BASE_URL }}/events/prune_old" \
-            -H "X-API-Key: ${{ secrets.SCRAPER_API_KEY }}" \
+            -H "X-API-Key: ${{ secrets.READ_API_KEY }}" \
             --max-time 30
