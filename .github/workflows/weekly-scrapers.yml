@@ -1,0 +1,73 @@
+name: Weekly Event Scrapers
+
+on:
+  schedule:
+    # Every Monday at 6:00 AM UTC — staggered by 5 min each to avoid hammering the DB
+    - cron: "0 6 * * 1"   # warfield         — 6:00 AM
+    - cron: "5 6 * * 1"   # dothebay         — 6:05 AM
+    - cron: "10 6 * * 1"  # sfrecpark        — 6:10 AM
+    - cron: "15 6 * * 1"  # resident_advisor — 6:15 AM
+    - cron: "20 6 * * 1"  # ticketmaster     — 6:20 AM
+  workflow_dispatch:       # also allows manual runs from the GitHub UI
+
+jobs:
+  scrape-warfield:
+    if: github.event.schedule == '0 6 * * 1' || github.event_name == 'workflow_dispatch'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Scrape Warfield
+        run: |
+          curl -f -X POST "${{ secrets.SCRAPER_BASE_URL }}/scrape_events_warfield" \
+            -H "X-API-Key: ${{ secrets.SCRAPER_API_KEY }}" \
+            --max-time 120
+        
+  scrape-dothebay:
+    if: github.event.schedule == '5 6 * * 1' || github.event_name == 'workflow_dispatch'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Scrape DoTheBay
+        run: |
+          curl -f -X POST "${{ secrets.SCRAPER_BASE_URL }}/scrape_events_dothebay" \
+            -H "X-API-Key: ${{ secrets.SCRAPER_API_KEY }}" \
+            --max-time 600
+
+  scrape-sfrecpark:
+    if: github.event.schedule == '10 6 * * 1' || github.event_name == 'workflow_dispatch'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Scrape SF Rec & Park
+        run: |
+          curl -f -X POST "${{ secrets.SCRAPER_BASE_URL }}/scrape_events_sfrecpark" \
+            -H "X-API-Key: ${{ secrets.SCRAPER_API_KEY }}" \
+            --max-time 600
+
+  scrape-resident-advisor:
+    if: github.event.schedule == '15 6 * * 1' || github.event_name == 'workflow_dispatch'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Scrape Resident Advisor
+        run: |
+          curl -f -X POST "${{ secrets.SCRAPER_BASE_URL }}/scrape_events_resident_advisor" \
+            -H "X-API-Key: ${{ secrets.SCRAPER_API_KEY }}" \
+            --max-time 600
+
+  scrape-ticketmaster:
+    if: github.event.schedule == '20 6 * * 1' || github.event_name == 'workflow_dispatch'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Scrape Ticketmaster
+        run: |
+          curl -f -X POST "${{ secrets.SCRAPER_BASE_URL }}/ticketmaster" \
+            -H "X-API-Key: ${{ secrets.SCRAPER_API_KEY }}" \
+            --max-time 120
+
+  # Run the pruner after all scrapers are done (every Monday at 7 AM)
+  prune-old-events:
+    if: github.event.schedule == '0 6 * * 1' || github.event_name == 'workflow_dispatch'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Prune events older than 2 weeks
+        run: |
+          curl -f -X DELETE "${{ secrets.SCRAPER_BASE_URL }}/events/prune_old" \
+            -H "X-API-Key: ${{ secrets.SCRAPER_API_KEY }}" \
+            --max-time 30
