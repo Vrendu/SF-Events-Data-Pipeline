@@ -10,6 +10,7 @@ from data_from_apis.categories import determine_categories
 import httpx
 from dotenv import load_dotenv
 from fastapi import Depends, FastAPI, HTTPException, Query, Security
+from fastapi.middleware.cors import CORSMiddleware
 from fastapi.security import APIKeyHeader
 from lxml import html
 from pydantic import BaseModel
@@ -132,6 +133,18 @@ async def geocode_location(location: str) -> Optional[str]:
 
 
 app = FastAPI(title="Events Scraper API", version="1.0.0")
+
+_cors_origins = os.getenv(
+    "CORS_ORIGINS",
+    "http://localhost:5173,http://127.0.0.1:5173",
+).split(",")
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=[o.strip() for o in _cors_origins if o.strip()],
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
 
 
 class ScrapeRequest(BaseModel):

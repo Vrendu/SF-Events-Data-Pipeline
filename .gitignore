@@ -69,5 +69,11 @@ dmypy.json
 # Pyre type checker
 .pyre/
 
+# Node / frontend
+frontend/node_modules/
+frontend/dist/
+frontend/.env
+frontend/.env.local
+
 # Project specific
 backend/__pycache__/
