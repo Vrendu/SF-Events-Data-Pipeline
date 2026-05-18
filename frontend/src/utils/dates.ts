@@ -1,3 +1,5 @@
+import type { EventFilters } from '../types/event'
+
 export function parseEventDateTime(datetime?: string | null): Date | null {
   if (!datetime) return null
   const normalized = datetime.replace(/([+-]\d{4})$/, '$1:00')
@@ -30,6 +32,30 @@ export function toIsoDate(d: Date): string {
   const m = String(d.getMonth() + 1).padStart(2, '0')
   const day = String(d.getDate()).padStart(2, '0')
   return `${y}-${m}-${day}`
+}
+
+function noonLocal(iso: string): Date {
+  return new Date(iso + 'T12:00:00')
+}
+
+export function addDaysToIsoDate(iso: string, deltaDays: number): string {
+  const d = noonLocal(iso)
+  d.setDate(d.getDate() + deltaDays)
+  return toIsoDate(d)
+}
+
+export function addMonthsToIsoDate(iso: string, months: number): string {
+  const d = noonLocal(iso)
+  d.setMonth(d.getMonth() + months)
+  return toIsoDate(d)
+}
+
+export function maxIsoDate(a: string, b: string): string {
+  return a >= b ? a : b
+}
+
+export function minIsoDate(a: string, b: string): string {
+  return a <= b ? a : b
 }
 
 export function formatFilterDate(iso: string | null): string {
@@ -70,3 +96,12 @@ export const TIME_OPTIONS: { id: TimeOfDay; label: string }[] = [
   { id: 'evening', label: 'Evening' },
   { id: 'night', label: 'Night' },
 ]
+
+/** Default UI filters: events on the user's current local calendar day */
+export function defaultEventFilters(): EventFilters {
+  return {
+    categories: [],
+    onDate: toIsoDate(new Date()),
+    timeOfDay: 'all',
+  }
+}

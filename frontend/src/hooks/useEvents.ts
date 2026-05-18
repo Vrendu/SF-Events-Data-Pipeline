@@ -1,7 +1,18 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import { fetchEvents } from '../api/events'
 import type { Event, EventCategory, EventFilters } from '../types/event'
-import { matchesTimeOfDay } from '../utils/dates'
+import {
+  addDaysToIsoDate,
+  addMonthsToIsoDate,
+  matchesTimeOfDay,
+  maxIsoDate,
+  minIsoDate,
+  toIsoDate,
+} from '../utils/dates'
+import { eventIsoDate, mergeEventsById } from '../utils/eventCache'
+
+const CACHE_WINDOW_MONTHS = 2
+const FETCH_LIMIT = 1000
 
 function eventMatchesCategories(event: Event, categories: EventCategory[]): boolean {
   if (categories.length === 0) return true
@@ -11,41 +22,111 @@ function eventMatchesCategories(event: Event, categories: EventCategory[]): bool
 }
 
 export function useEvents(filters: EventFilters) {
-  const [events, setEvents] = useState<Event[]>([])
-  const [loading, setLoading] = useState(true)
+  const [cachedEvents, setCachedEvents] = useState<Event[]>([])
+  const [loadedStart, setLoadedStart] = useState<string | null>(null)
+  const [loadedEnd, setLoadedEnd] = useState<string | null>(null)
+  const [fetching, setFetching] = useState(true)
   const [error, setError] = useState<string | null>(null)
 
-  const load = useCallback(async () => {
-    setLoading(true)
-    setError(null)
-    try {
-      const params: Parameters<typeof fetchEvents>[0] = {
-        limit: 500,
-        sort: 'datetime_asc',
-      }
-      if (filters.onDate) params.onDate = filters.onDate
-
-      const data = await fetchEvents(params)
-      setEvents(data)
-    } catch (e) {
-      setError(e instanceof Error ? e.message : 'Failed to load events')
-      setEvents([])
-    } finally {
-      setLoading(false)
-    }
-  }, [filters.onDate])
-
   useEffect(() => {
-    load()
-  }, [load])
+    let cancelled = false
+    const onDate = filters.onDate
+
+    if (
+      loadedStart &&
+      loadedEnd &&
+      (!onDate || (onDate >= loadedStart && onDate <= loadedEnd))
+    ) {
+      setFetching(false)
+      return
+    }
+
+    async function run() {
+      setFetching(true)
+      setError(null)
+      try {
+        if (loadedStart === null || loadedEnd === null) {
+          const start = toIsoDate(new Date())
+          const end = addMonthsToIsoDate(start, CACHE_WINDOW_MONTHS)
+          const data = await fetchEvents({
+            startDate: start,
+            endDate: end,
+            limit: FETCH_LIMIT,
+            sort: 'datetime_asc',
+          })
+          if (cancelled) return
+          setCachedEvents(data)
+          setLoadedStart(start)
+          setLoadedEnd(end)
+          return
+        }
+
+        if (!onDate) {
+          if (cancelled) return
+          return
+        }
+
+        if (onDate < loadedStart) {
+          const to = addDaysToIsoDate(loadedStart, -1)
+          const from = minIsoDate(onDate, addMonthsToIsoDate(to, -CACHE_WINDOW_MONTHS))
+          const data = await fetchEvents({
+            startDate: from,
+            endDate: to,
+            limit: FETCH_LIMIT,
+            sort: 'datetime_asc',
+          })
+          if (cancelled) return
+          setCachedEvents((prev) => mergeEventsById(prev, data))
+          setLoadedStart(from)
+        } else if (onDate > loadedEnd) {
+          const from = addDaysToIsoDate(loadedEnd, 1)
+          const to = maxIsoDate(onDate, addMonthsToIsoDate(from, CACHE_WINDOW_MONTHS))
+          const data = await fetchEvents({
+            startDate: from,
+            endDate: to,
+            limit: FETCH_LIMIT,
+            sort: 'datetime_asc',
+          })
+          if (cancelled) return
+          setCachedEvents((prev) => mergeEventsById(prev, data))
+          setLoadedEnd(to)
+        }
+      } catch (e) {
+        if (!cancelled) {
+          setError(e instanceof Error ? e.message : 'Failed to load events')
+        }
+      } finally {
+        if (!cancelled) setFetching(false)
+      }
+    }
+
+    void run()
+    return () => {
+      cancelled = true
+    }
+  }, [filters.onDate, loadedStart, loadedEnd])
 
   const filtered = useMemo(() => {
-    return events.filter((e) => {
+    return cachedEvents.filter((e) => {
+      if (filters.onDate) {
+        const d = eventIsoDate(e)
+        if (!d || d !== filters.onDate) return false
+      }
       if (!eventMatchesCategories(e, filters.categories)) return false
       if (!matchesTimeOfDay(e.datetime, filters.timeOfDay)) return false
       return true
     })
-  }, [events, filters.categories, filters.timeOfDay])
+  }, [cachedEvents, filters.onDate, filters.categories, filters.timeOfDay])
 
-  return { events: filtered, loading, error, reload: load }
+  const loading = cachedEvents.length === 0 && fetching
+
+  const reload = useCallback(() => {
+    setCachedEvents([])
+    setLoadedStart(null)
+    setLoadedEnd(null)
+    setFetching(true)
+    setError(null)
+  }, [])
+
+  return { events: filtered, loading, error, reload }
 }

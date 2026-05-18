@@ -1,5 +1,9 @@
 import { useCallback, useEffect, useState, lazy, Suspense } from 'react'
 import { Header } from './components/Header'
+import { LoginPage } from './components/LoginPage'
+import { SignupPage } from './components/SignupPage'
+import { DashboardPage } from './components/DashboardPage'
+import { useAuth } from './hooks/useAuth'
 import { EventTypeModal } from './components/EventTypeModal'
 import { DateModal } from './components/DateModal'
 import { TimeModal } from './components/TimeModal'
@@ -13,6 +17,8 @@ import type { EventFilters } from './types/event'
 import { getFavoriteIds, toggleFavorite } from './utils/favorites'
 import type { TimeOfDay } from './utils/dates'
 import { parseLatLong } from './utils/geo'
+
+type AppView = 'map' | 'login' | 'signup' | 'dashboard'
 
 const defaultFilters: EventFilters = {
   categories: [],
@@ -28,6 +34,9 @@ function firstMappableId(list: { id: number; latlong?: string | null }[]): numbe
 }
 
 export default function App() {
+  const { user, login, signup, logout } = useAuth()
+  const [view, setView] = useState<AppView>('map')
+  const [menuOpen, setMenuOpen] = useState(false)
   const [listExpanded, setListExpanded] = useState(true)
   const [filters, setFilters] = useState<EventFilters>(defaultFilters)
   const [appliedFilters, setAppliedFilters] = useState<EventFilters>(defaultFilters)
@@ -64,9 +73,65 @@ export default function App() {
     setListExpanded((v) => !v)
   }, [])
 
+  const goToMap = useCallback(() => setView('map'), [])
+
+  const handleLogin = useCallback(
+    (email: string, password: string) => {
+      login(email, password)
+      setView('map')
+    },
+    [login],
+  )
+
+  const handleSignup = useCallback(
+    (email: string, password: string, displayName?: string) => {
+      signup(email, password, displayName)
+      setView('map')
+    },
+    [signup],
+  )
+
+  const handleLogout = useCallback(() => {
+    logout()
+    setView('map')
+  }, [logout])
+
+  if (view === 'login') {
+    return (
+      <LoginPage
+        onBack={goToMap}
+        onLogin={handleLogin}
+        onGoSignup={() => setView('signup')}
+      />
+    )
+  }
+
+  if (view === 'signup') {
+    return (
+      <SignupPage
+        onBack={goToMap}
+        onSignup={handleSignup}
+        onGoLogin={() => setView('login')}
+      />
+    )
+  }
+
+  if (view === 'dashboard' && user) {
+    return <DashboardPage user={user} onBack={goToMap} onLogout={handleLogout} />
+  }
+
   return (
     <div className="app">
-      <Header />
+      <Header
+        menuOpen={menuOpen}
+        user={user}
+        onToggleMenu={() => setMenuOpen((v) => !v)}
+        onCloseMenu={() => setMenuOpen(false)}
+        onLogin={() => setView('login')}
+        onSignup={() => setView('signup')}
+        onDashboard={() => setView('dashboard')}
+        onLogout={handleLogout}
+      />
 
       <main className="main">
         <div className="map-view-shell">
