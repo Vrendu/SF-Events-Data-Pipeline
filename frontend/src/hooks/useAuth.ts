@@ -1,37 +1,51 @@
-import { useCallback, useState } from 'react'
+import { useCallback, useEffect, useState } from 'react'
+import { fetchCurrentUser, loginUser, logoutUser, registerUser } from '../api/auth'
 import type { User } from '../types/user'
-import { clearStoredUser, readStoredUser, writeStoredUser } from '../utils/authStorage'
-
-function userFromEmail(email: string, displayName?: string): User {
-  const normalized = email.trim().toLowerCase()
-  return {
-    id: `local-${normalized}`,
-    email: normalized,
-    displayName: displayName?.trim() || normalized.split('@')[0] || 'User',
-  }
-}
 
 export function useAuth() {
-  const [user, setUser] = useState<User | null>(() => readStoredUser())
+  const [user, setUser] = useState<User | null>(null)
+  const [initializing, setInitializing] = useState(true)
 
-  const login = useCallback((email: string, _password: string) => {
-    const next = userFromEmail(email)
-    writeStoredUser(next)
+  useEffect(() => {
+    let cancelled = false
+    fetchCurrentUser()
+      .then((u) => {
+        if (!cancelled) setUser(u)
+      })
+      .catch(() => {
+        if (!cancelled) setUser(null)
+      })
+      .finally(() => {
+        if (!cancelled) setInitializing(false)
+      })
+    return () => {
+      cancelled = true
+    }
+  }, [])
+
+  const login = useCallback(async (email: string, password: string) => {
+    const next = await loginUser(email, password)
     setUser(next)
     return next
   }, [])
 
-  const signup = useCallback((email: string, _password: string, displayName?: string) => {
-    const next = userFromEmail(email, displayName)
-    writeStoredUser(next)
+  const signup = useCallback(async (email: string, password: string, displayName?: string) => {
+    const next = await registerUser(email, password, displayName)
     setUser(next)
     return next
   }, [])
 
-  const logout = useCallback(() => {
-    clearStoredUser()
+  const logout = useCallback(async () => {
+    await logoutUser()
     setUser(null)
   }, [])
 
-  return { user, isLoggedIn: user != null, login, signup, logout }
+  return {
+    user,
+    isLoggedIn: user != null,
+    initializing,
+    login,
+    signup,
+    logout,
+  }
 }

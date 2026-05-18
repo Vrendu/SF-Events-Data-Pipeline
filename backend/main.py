@@ -27,6 +27,7 @@ from scraping.scraping_main import (
 )
 from data_from_apis.data_resident_advisor import scrape_from_resident_advisor
 from scraping.scraping_city_and_public import scrape_sfrecpark
+from auth import create_auth_router
 
 load_dotenv()
 
@@ -278,15 +279,45 @@ async def init_db():
         await conn.execute("""
             CREATE UNIQUE INDEX IF NOT EXISTS idx_events_title ON events (title, datetime, venue);
              """)
+
+        await conn.execute("""
+            CREATE TABLE IF NOT EXISTS users (
+                id UUID PRIMARY KEY,
+                email TEXT NOT NULL UNIQUE,
+                password_hash TEXT NOT NULL,
+                display_name TEXT NOT NULL,
+                created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+            )
+            """)
+
+        await conn.execute("""
+            CREATE TABLE IF NOT EXISTS refresh_tokens (
+                id UUID PRIMARY KEY,
+                user_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+                token_hash TEXT NOT NULL UNIQUE,
+                expires_at TIMESTAMPTZ NOT NULL,
+                created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+            )
+            """)
+
+        await conn.execute("""
+            CREATE INDEX IF NOT EXISTS idx_refresh_tokens_user
+            ON refresh_tokens (user_id)
+            """)
     finally:
         await conn.close()
+
+
+app.include_router(create_auth_router(db_connection))
 
 
 @app.on_event("startup")
 async def startup_event():
     await init_db()
     global db_pool
-    db_pool = await asyncpg.create_pool(DATABASE_URL, min_size=1, max_size=10)
+    db_pool = await asyncpg.create_pool(
+        DATABASE_URL, min_size=1, max_size=10, **_get_connect_kwargs()
+    )
 
 
 @app.on_event("shutdown")

@@ -2,8 +2,16 @@ import { useState, type FormEvent } from 'react'
 
 interface SignupPageProps {
   onBack: () => void
-  onSignup: (email: string, password: string, displayName?: string) => void
+  onSignup: (email: string, password: string, displayName?: string) => Promise<void>
   onGoLogin: () => void
+}
+
+function passwordMeetsRules(password: string): string | null {
+  if (password.length < 10) return 'Password must be at least 10 characters.'
+  if (password.length > 128) return 'Password must be at most 128 characters.'
+  if (!/[A-Za-z]/.test(password)) return 'Password must include at least one letter.'
+  if (!/\d/.test(password)) return 'Password must include at least one number.'
+  return null
 }
 
 export function SignupPage({ onBack, onSignup, onGoLogin }: SignupPageProps) {
@@ -12,15 +20,17 @@ export function SignupPage({ onBack, onSignup, onGoLogin }: SignupPageProps) {
   const [password, setPassword] = useState('')
   const [confirm, setConfirm] = useState('')
   const [error, setError] = useState<string | null>(null)
+  const [submitting, setSubmitting] = useState(false)
 
-  const handleSubmit = (e: FormEvent) => {
+  const handleSubmit = async (e: FormEvent) => {
     e.preventDefault()
     if (!email.trim() || !password) {
       setError('Enter your email and password.')
       return
     }
-    if (password.length < 6) {
-      setError('Password must be at least 6 characters.')
+    const ruleError = passwordMeetsRules(password)
+    if (ruleError) {
+      setError(ruleError)
       return
     }
     if (password !== confirm) {
@@ -28,13 +38,20 @@ export function SignupPage({ onBack, onSignup, onGoLogin }: SignupPageProps) {
       return
     }
     setError(null)
-    onSignup(email, password, displayName || undefined)
+    setSubmitting(true)
+    try {
+      await onSignup(email, password, displayName || undefined)
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Could not create account.')
+    } finally {
+      setSubmitting(false)
+    }
   }
 
   return (
     <div className="auth-page">
       <header className="auth-page__head">
-        <button type="button" className="auth-page__back" onClick={onBack}>
+        <button type="button" className="auth-page__back" onClick={onBack} disabled={submitting}>
           ← Back to map
         </button>
       </header>
@@ -50,6 +67,7 @@ export function SignupPage({ onBack, onSignup, onGoLogin }: SignupPageProps) {
               value={displayName}
               onChange={(e) => setDisplayName(e.target.value)}
               placeholder="Your name"
+              disabled={submitting}
             />
           </label>
           <label className="auth-field">
@@ -60,6 +78,7 @@ export function SignupPage({ onBack, onSignup, onGoLogin }: SignupPageProps) {
               value={email}
               onChange={(e) => setEmail(e.target.value)}
               placeholder="you@example.com"
+              disabled={submitting}
             />
           </label>
           <label className="auth-field">
@@ -69,7 +88,8 @@ export function SignupPage({ onBack, onSignup, onGoLogin }: SignupPageProps) {
               autoComplete="new-password"
               value={password}
               onChange={(e) => setPassword(e.target.value)}
-              placeholder="At least 6 characters"
+              placeholder="10+ chars, letter and number"
+              disabled={submitting}
             />
           </label>
           <label className="auth-field">
@@ -80,6 +100,7 @@ export function SignupPage({ onBack, onSignup, onGoLogin }: SignupPageProps) {
               value={confirm}
               onChange={(e) => setConfirm(e.target.value)}
               placeholder="••••••••"
+              disabled={submitting}
             />
           </label>
           {error && (
@@ -87,13 +108,13 @@ export function SignupPage({ onBack, onSignup, onGoLogin }: SignupPageProps) {
               {error}
             </p>
           )}
-          <button type="submit" className="auth-form__submit">
-            Create account
+          <button type="submit" className="auth-form__submit" disabled={submitting}>
+            {submitting ? 'Creating account…' : 'Create account'}
           </button>
         </form>
         <p className="auth-page__switch">
           Already have an account?{' '}
-          <button type="button" className="auth-page__link" onClick={onGoLogin}>
+          <button type="button" className="auth-page__link" onClick={onGoLogin} disabled={submitting}>
             Log in
           </button>
         </p>

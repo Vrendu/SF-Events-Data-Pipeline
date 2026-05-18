@@ -1,4 +1,5 @@
 import type { Event, EventFilters } from '../types/event'
+import { toIsoDate } from '../utils/dates'
 import { FilterBar, type FilterModal } from './FilterBar'
 import { EventList } from './EventList'
 
@@ -29,8 +30,11 @@ export function EventListSheet({
   onToggleFavorite,
   onSelectEvent,
 }: EventListSheetProps) {
+  const today = toIsoDate(new Date())
   const hasFilters =
-    filters.categories.length > 0 || filters.onDate !== null || filters.timeOfDay !== 'all'
+    filters.categories.length > 0 ||
+    (filters.onDate != null && filters.onDate !== today) ||
+    filters.timeOfDay !== 'all'
 
   return (
     <section

@@ -18,3 +18,12 @@ export function toggleFavorite(id: number): Set<number> {
   localStorage.setItem(STORAGE_KEY, JSON.stringify([...ids]))
   return ids
 }
+
+export function clearFavorites(): void {
+  if (typeof localStorage === 'undefined') return
+  try {
+    localStorage.removeItem(STORAGE_KEY)
+  } catch {
+    /* ignore */
+  }
+}

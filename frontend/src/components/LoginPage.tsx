@@ -2,7 +2,7 @@ import { useState, type FormEvent } from 'react'
 
 interface LoginPageProps {
   onBack: () => void
-  onLogin: (email: string, password: string) => void
+  onLogin: (email: string, password: string) => Promise<void>
   onGoSignup: () => void
 }
 
@@ -10,21 +10,29 @@ export function LoginPage({ onBack, onLogin, onGoSignup }: LoginPageProps) {
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
   const [error, setError] = useState<string | null>(null)
+  const [submitting, setSubmitting] = useState(false)
 
-  const handleSubmit = (e: FormEvent) => {
+  const handleSubmit = async (e: FormEvent) => {
     e.preventDefault()
     if (!email.trim() || !password) {
       setError('Enter your email and password.')
       return
     }
     setError(null)
-    onLogin(email, password)
+    setSubmitting(true)
+    try {
+      await onLogin(email, password)
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Log in failed.')
+    } finally {
+      setSubmitting(false)
+    }
   }
 
   return (
     <div className="auth-page">
       <header className="auth-page__head">
-        <button type="button" className="auth-page__back" onClick={onBack}>
+        <button type="button" className="auth-page__back" onClick={onBack} disabled={submitting}>
           ← Back to map
         </button>
       </header>
@@ -40,6 +48,7 @@ export function LoginPage({ onBack, onLogin, onGoSignup }: LoginPageProps) {
               value={email}
               onChange={(e) => setEmail(e.target.value)}
               placeholder="you@example.com"
+              disabled={submitting}
             />
           </label>
           <label className="auth-field">
@@ -50,6 +59,7 @@ export function LoginPage({ onBack, onLogin, onGoSignup }: LoginPageProps) {
               value={password}
               onChange={(e) => setPassword(e.target.value)}
               placeholder="••••••••"
+              disabled={submitting}
             />
           </label>
           {error && (
@@ -57,13 +67,13 @@ export function LoginPage({ onBack, onLogin, onGoSignup }: LoginPageProps) {
               {error}
             </p>
           )}
-          <button type="submit" className="auth-form__submit">
-            Log in
+          <button type="submit" className="auth-form__submit" disabled={submitting}>
+            {submitting ? 'Logging in…' : 'Log in'}
           </button>
         </form>
         <p className="auth-page__switch">
           New here?{' '}
-          <button type="button" className="auth-page__link" onClick={onGoSignup}>
+          <button type="button" className="auth-page__link" onClick={onGoSignup} disabled={submitting}>
             Create an account
           </button>
         </p>

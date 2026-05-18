@@ -306,6 +306,11 @@ button {
   border: 1.5px solid var(--border);
 }
 
+.auth-form__submit:disabled {
+  opacity: 0.65;
+  cursor: not-allowed;
+}
+
 .auth-page__switch {
   margin: 20px 0 0;
   text-align: center;

@@ -14,17 +14,13 @@ const MapView = lazy(() =>
 import type { FilterModal } from './components/FilterBar'
 import { useEvents } from './hooks/useEvents'
 import type { EventFilters } from './types/event'
-import { getFavoriteIds, toggleFavorite } from './utils/favorites'
+import { clearFavorites, getFavoriteIds, toggleFavorite } from './utils/favorites'
+import { readStoredFilters, writeStoredFilters } from './utils/filterStorage'
 import type { TimeOfDay } from './utils/dates'
+import { defaultEventFilters } from './utils/dates'
 import { parseLatLong } from './utils/geo'
 
 type AppView = 'map' | 'login' | 'signup' | 'dashboard'
-
-const defaultFilters: EventFilters = {
-  categories: [],
-  onDate: null,
-  timeOfDay: 'all',
-}
 
 function firstMappableId(list: { id: number; latlong?: string | null }[]): number | null {
   for (const e of list) {
@@ -34,17 +30,21 @@ function firstMappableId(list: { id: number; latlong?: string | null }[]): numbe
 }
 
 export default function App() {
-  const { user, login, signup, logout } = useAuth()
+  const { user, login, signup, logout, initializing } = useAuth()
   const [view, setView] = useState<AppView>('map')
   const [menuOpen, setMenuOpen] = useState(false)
   const [listExpanded, setListExpanded] = useState(true)
-  const [filters, setFilters] = useState<EventFilters>(defaultFilters)
-  const [appliedFilters, setAppliedFilters] = useState<EventFilters>(defaultFilters)
+  const [filters, setFilters] = useState<EventFilters>(() => readStoredFilters())
+  const [appliedFilters, setAppliedFilters] = useState<EventFilters>(() => readStoredFilters())
   const [modal, setModal] = useState<FilterModal>(null)
   const [favorites, setFavorites] = useState<Set<number>>(() => getFavoriteIds())
   const [selectedEventId, setSelectedEventId] = useState<number | null>(null)
 
   const { events, loading, error } = useEvents(appliedFilters)
+
+  useEffect(() => {
+    writeStoredFilters(appliedFilters)
+  }, [appliedFilters])
 
   useEffect(() => {
     setSelectedEventId((prev) => {
@@ -54,8 +54,9 @@ export default function App() {
   }, [events])
 
   const clearFilters = useCallback(() => {
-    setFilters(defaultFilters)
-    setAppliedFilters(defaultFilters)
+    const next = defaultEventFilters()
+    setFilters(next)
+    setAppliedFilters(next)
   }, [])
 
   const handleToggleFavorite = useCallback((id: number) => {
@@ -76,25 +77,33 @@ export default function App() {
   const goToMap = useCallback(() => setView('map'), [])
 
   const handleLogin = useCallback(
-    (email: string, password: string) => {
-      login(email, password)
+    async (email: string, password: string) => {
+      await login(email, password)
       setView('map')
     },
     [login],
   )
 
   const handleSignup = useCallback(
-    (email: string, password: string, displayName?: string) => {
-      signup(email, password, displayName)
+    async (email: string, password: string, displayName?: string) => {
+      await signup(email, password, displayName)
       setView('map')
     },
     [signup],
   )
 
-  const handleLogout = useCallback(() => {
-    logout()
+  const handleLogout = useCallback(async () => {
+    await logout()
+    clearFavorites()
+    setFavorites(new Set())
     setView('map')
   }, [logout])
+
+  useEffect(() => {
+    if (view === 'dashboard' && !user && !initializing) {
+      setView('map')
+    }
+  }, [view, user, initializing])
 
   if (view === 'login') {
     return (
@@ -117,7 +126,9 @@ export default function App() {
   }
 
   if (view === 'dashboard' && user) {
-    return <DashboardPage user={user} onBack={goToMap} onLogout={handleLogout} />
+    return (
+      <DashboardPage user={user} onBack={goToMap} onLogout={() => void handleLogout()} />
+    )
   }
 
   return (

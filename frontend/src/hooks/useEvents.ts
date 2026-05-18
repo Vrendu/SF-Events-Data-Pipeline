@@ -10,9 +10,42 @@ import {
   toIsoDate,
 } from '../utils/dates'
 import { eventIsoDate, mergeEventsById } from '../utils/eventCache'
+import {
+  clearEventsCache,
+  readEventsCache,
+  writeEventsCache,
+} from '../utils/eventCacheStorage'
 
-const CACHE_WINDOW_MONTHS = 2
+/** Default preload window: today through today + this many calendar months */
+const CACHE_WINDOW_MONTHS = 1
 const FETCH_LIMIT = 1000
+
+function defaultWindow(): { start: string; end: string } {
+  const start = toIsoDate(new Date())
+  return { start, end: addMonthsToIsoDate(start, CACHE_WINDOW_MONTHS) }
+}
+
+function monthCapFromToday(today: string): string {
+  return addMonthsToIsoDate(today, CACHE_WINDOW_MONTHS)
+}
+
+function loadInitialState(): {
+  cachedEvents: Event[]
+  loadedStart: string | null
+  loadedEnd: string | null
+  fetching: boolean
+} {
+  const stored = readEventsCache()
+  if (!stored || stored.events.length === 0) {
+    return { cachedEvents: [], loadedStart: null, loadedEnd: null, fetching: true }
+  }
+  return {
+    cachedEvents: stored.events,
+    loadedStart: stored.loadedStart,
+    loadedEnd: stored.loadedEnd,
+    fetching: false,
+  }
+}
 
 function eventMatchesCategories(event: Event, categories: EventCategory[]): boolean {
   if (categories.length === 0) return true
@@ -21,22 +54,42 @@ function eventMatchesCategories(event: Event, categories: EventCategory[]): bool
   return categories.some((c) => eventCats.includes(c))
 }
 
+function dateInRange(date: string, start: string, end: string): boolean {
+  return date >= start && date <= end
+}
+
 export function useEvents(filters: EventFilters) {
-  const [cachedEvents, setCachedEvents] = useState<Event[]>([])
-  const [loadedStart, setLoadedStart] = useState<string | null>(null)
-  const [loadedEnd, setLoadedEnd] = useState<string | null>(null)
-  const [fetching, setFetching] = useState(true)
+  const [cachedEvents, setCachedEvents] = useState<Event[]>(() => loadInitialState().cachedEvents)
+  const [loadedStart, setLoadedStart] = useState<string | null>(() => loadInitialState().loadedStart)
+  const [loadedEnd, setLoadedEnd] = useState<string | null>(() => loadInitialState().loadedEnd)
+  const [fetching, setFetching] = useState(() => loadInitialState().fetching)
   const [error, setError] = useState<string | null>(null)
+
+  useEffect(() => {
+    if (loadedStart && loadedEnd && cachedEvents.length > 0) {
+      writeEventsCache({
+        events: cachedEvents,
+        loadedStart,
+        loadedEnd,
+        savedAt: new Date().toISOString(),
+      })
+    }
+  }, [cachedEvents, loadedStart, loadedEnd])
 
   useEffect(() => {
     let cancelled = false
     const onDate = filters.onDate
+    const today = toIsoDate(new Date())
+    const defaultEnd = monthCapFromToday(today)
 
-    if (
-      loadedStart &&
-      loadedEnd &&
-      (!onDate || (onDate >= loadedStart && onDate <= loadedEnd))
-    ) {
+    const rangeCoversToday =
+      loadedStart != null && loadedEnd != null && dateInRange(today, loadedStart, loadedEnd)
+
+    const rangeCoversFilter =
+      !onDate ||
+      (loadedStart != null && loadedEnd != null && dateInRange(onDate, loadedStart, loadedEnd))
+
+    if (loadedStart && loadedEnd && rangeCoversToday && rangeCoversFilter) {
       setFetching(false)
       return
     }
@@ -46,8 +99,7 @@ export function useEvents(filters: EventFilters) {
       setError(null)
       try {
         if (loadedStart === null || loadedEnd === null) {
-          const start = toIsoDate(new Date())
-          const end = addMonthsToIsoDate(start, CACHE_WINDOW_MONTHS)
+          const { start, end } = defaultWindow()
           const data = await fetchEvents({
             startDate: start,
             endDate: end,
@@ -61,8 +113,22 @@ export function useEvents(filters: EventFilters) {
           return
         }
 
-        if (!onDate) {
+        if (!rangeCoversToday && today > loadedEnd) {
+          const from = addDaysToIsoDate(loadedEnd, 1)
+          const to = maxIsoDate(defaultEnd, today)
+          const data = await fetchEvents({
+            startDate: from,
+            endDate: to,
+            limit: FETCH_LIMIT,
+            sort: 'datetime_asc',
+          })
           if (cancelled) return
+          setCachedEvents((prev) => mergeEventsById(prev, data))
+          setLoadedEnd(maxIsoDate(loadedEnd, to))
+          if (rangeCoversFilter) return
+        }
+
+        if (!onDate) {
           return
         }
 
@@ -80,7 +146,10 @@ export function useEvents(filters: EventFilters) {
           setLoadedStart(from)
         } else if (onDate > loadedEnd) {
           const from = addDaysToIsoDate(loadedEnd, 1)
-          const to = maxIsoDate(onDate, addMonthsToIsoDate(from, CACHE_WINDOW_MONTHS))
+          const to =
+            onDate > defaultEnd
+              ? maxIsoDate(onDate, addMonthsToIsoDate(from, CACHE_WINDOW_MONTHS))
+              : maxIsoDate(onDate, loadedEnd)
           const data = await fetchEvents({
             startDate: from,
             endDate: to,
@@ -121,6 +190,7 @@ export function useEvents(filters: EventFilters) {
   const loading = cachedEvents.length === 0 && fetching
 
   const reload = useCallback(() => {
+    clearEventsCache()
     setCachedEvents([])
     setLoadedStart(null)
     setLoadedEnd(null)
