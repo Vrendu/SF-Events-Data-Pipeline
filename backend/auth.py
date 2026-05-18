@@ -336,4 +336,4 @@ def create_auth_router(get_db_connection) -> APIRouter:
                 return refreshed
             raise
 
-    return router
+    return router, get_current_user

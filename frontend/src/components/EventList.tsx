@@ -6,6 +6,7 @@ interface EventListProps {
   favorites: Set<number>
   selectedEventId?: number | null
   onToggleFavorite: (id: number) => void
+  onAddToItinerary?: (event: Event) => void
   onSelectEvent?: (id: number) => void
   /** When false, list does not scroll (collapsed sheet preview) */
   scrollable?: boolean
@@ -19,6 +20,7 @@ export function EventList({
   favorites,
   selectedEventId,
   onToggleFavorite,
+  onAddToItinerary,
   onSelectEvent,
   scrollable = true,
   maxItems,
@@ -40,6 +42,7 @@ export function EventList({
           selected={selectedEventId === event.id}
           compact={compact}
           onToggleFavorite={onToggleFavorite}
+          onAddToItinerary={onAddToItinerary}
           onSelect={onSelectEvent}
         />
       ))}

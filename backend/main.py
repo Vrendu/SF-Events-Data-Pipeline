@@ -28,6 +28,7 @@ from scraping.scraping_main import (
 from data_from_apis.data_resident_advisor import scrape_from_resident_advisor
 from scraping.scraping_city_and_public import scrape_sfrecpark
 from auth import create_auth_router
+from itineraries import create_itineraries_router
 
 load_dotenv()
 
@@ -304,11 +305,38 @@ async def init_db():
             CREATE INDEX IF NOT EXISTS idx_refresh_tokens_user
             ON refresh_tokens (user_id)
             """)
+
+        await conn.execute("""
+            CREATE TABLE IF NOT EXISTS itineraries (
+                id UUID PRIMARY KEY,
+                user_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+                name TEXT NOT NULL,
+                created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+                updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+            )
+            """)
+
+        await conn.execute("""
+            CREATE TABLE IF NOT EXISTS itinerary_events (
+                itinerary_id UUID NOT NULL REFERENCES itineraries(id) ON DELETE CASCADE,
+                event_id INTEGER NOT NULL REFERENCES events(id) ON DELETE CASCADE,
+                sort_order INTEGER NOT NULL DEFAULT 0,
+                added_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+                PRIMARY KEY (itinerary_id, event_id)
+            )
+            """)
+
+        await conn.execute("""
+            CREATE INDEX IF NOT EXISTS idx_itineraries_user
+            ON itineraries (user_id)
+            """)
     finally:
         await conn.close()
 
 
-app.include_router(create_auth_router(db_connection))
+_auth_router, get_current_user = create_auth_router(db_connection)
+app.include_router(_auth_router)
+app.include_router(create_itineraries_router(db_connection, get_current_user))
 
 
 @app.on_event("startup")

@@ -14,6 +14,7 @@ interface EventListSheetProps {
   onOpenModal: (modal: FilterModal) => void
   onClearFilters: () => void
   onToggleFavorite: (id: number) => void
+  onAddToItinerary?: (event: Event) => void
   onSelectEvent: (id: number) => void
 }
 
@@ -28,6 +29,7 @@ export function EventListSheet({
   onOpenModal,
   onClearFilters,
   onToggleFavorite,
+  onAddToItinerary,
   onSelectEvent,
 }: EventListSheetProps) {
   const today = toIsoDate(new Date())
@@ -72,6 +74,7 @@ export function EventListSheet({
               favorites={favorites}
               selectedEventId={selectedEventId}
               onToggleFavorite={onToggleFavorite}
+              onAddToItinerary={onAddToItinerary}
               onSelectEvent={onSelectEvent}
               scrollable
             />
@@ -97,6 +100,7 @@ export function EventListSheet({
               favorites={favorites}
               selectedEventId={selectedEventId}
               onToggleFavorite={onToggleFavorite}
+              onAddToItinerary={onAddToItinerary}
               onSelectEvent={onSelectEvent}
               scrollable={false}
               maxItems={2}

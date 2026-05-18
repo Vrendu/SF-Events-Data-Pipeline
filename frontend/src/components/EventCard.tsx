@@ -1,4 +1,5 @@
-import { Heart } from 'lucide-react'
+import type { MouseEvent } from 'react'
+import { CalendarPlus, ExternalLink, Heart } from 'lucide-react'
 import type { Event } from '../types/event'
 import { formatEventDate, formatEventTime } from '../utils/dates'
 
@@ -8,6 +9,7 @@ interface EventCardProps {
   selected?: boolean
   compact?: boolean
   onToggleFavorite: (id: number) => void
+  onAddToItinerary?: (event: Event) => void
   onSelect?: (id: number) => void
 }
 
@@ -17,9 +19,15 @@ export function EventCard({
   selected,
   compact,
   onToggleFavorite,
+  onAddToItinerary,
   onSelect,
 }: EventCardProps) {
   const location = event.venue || event.location || 'Location TBA'
+  const eventUrl = event.url?.trim()
+
+  const stopCardClick = (e: MouseEvent) => {
+    e.stopPropagation()
+  }
 
   return (
     <article
@@ -40,31 +48,87 @@ export function EventCard({
     >
       <div className="event-card-thumb" aria-hidden />
       <div className="event-card-body">
-        <h3 className="event-card-title">{event.title}</h3>
+        <h3 className="event-card-title">
+          {eventUrl ? (
+            <a
+              href={eventUrl}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="event-card-title-link"
+              onClick={stopCardClick}
+            >
+              {event.title}
+            </a>
+          ) : (
+            event.title
+          )}
+        </h3>
         {compact ? (
           <p className="event-card-meta event-card-meta--inline">
             {formatEventDate(event.datetime)}
             {event.datetime ? ` · ${formatEventTime(event.datetime)}` : ''}
+            {eventUrl && (
+              <>
+                {' · '}
+                <a
+                  href={eventUrl}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="event-card-link"
+                  onClick={stopCardClick}
+                  aria-label={`Open ${event.title}`}
+                >
+                  <ExternalLink size={12} aria-hidden />
+                </a>
+              </>
+            )}
           </p>
         ) : (
           <>
             <p className="event-card-meta">{formatEventDate(event.datetime)}</p>
             {event.datetime && <p className="event-card-meta">{formatEventTime(event.datetime)}</p>}
             <p className="event-card-meta">{location}</p>
+            {eventUrl && (
+              <a
+                href={eventUrl}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="event-card-link"
+                onClick={stopCardClick}
+              >
+                View event
+                <ExternalLink size={14} aria-hidden />
+              </a>
+            )}
           </>
         )}
       </div>
-      <button
-        type="button"
-        className={`favorite-btn ${liked ? 'is-liked' : ''}`}
-        aria-label={liked ? 'Remove from favorites' : 'Save event'}
-        onClick={(e) => {
-          e.stopPropagation()
-          onToggleFavorite(event.id)
-        }}
-      >
-        <Heart size={compact ? 16 : 18} fill={liked ? 'currentColor' : 'none'} />
-      </button>
+      <div className="event-card-actions">
+        {onAddToItinerary && (
+          <button
+            type="button"
+            className="itinerary-add-btn"
+            aria-label="Add to itinerary"
+            onClick={(e) => {
+              e.stopPropagation()
+              onAddToItinerary(event)
+            }}
+          >
+            <CalendarPlus size={compact ? 16 : 18} />
+          </button>
+        )}
+        <button
+          type="button"
+          className={`favorite-btn ${liked ? 'is-liked' : ''}`}
+          aria-label={liked ? 'Remove from favorites' : 'Save event'}
+          onClick={(e) => {
+            e.stopPropagation()
+            onToggleFavorite(event.id)
+          }}
+        >
+          <Heart size={compact ? 16 : 18} fill={liked ? 'currentColor' : 'none'} />
+        </button>
+      </div>
     </article>
   )
 }

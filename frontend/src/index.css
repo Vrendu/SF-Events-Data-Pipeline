@@ -350,6 +350,243 @@ button {
   line-height: 1.45;
 }
 
+.dashboard-page__body {
+  max-width: 520px;
+}
+
+.dashboard-section-title {
+  margin: 0 0 12px;
+  font-size: 1.05rem;
+  font-weight: 700;
+}
+
+.dashboard-itineraries-layout {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  margin-bottom: 24px;
+}
+
+.itinerary-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.itinerary-list-item {
+  width: 100%;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 12px 14px;
+  border: 1.5px solid var(--border);
+  border-radius: 12px;
+  background: var(--white);
+  text-align: left;
+  cursor: pointer;
+}
+
+.itinerary-list-item.is-active {
+  border-color: var(--orange);
+  background: #fff8f2;
+}
+
+.itinerary-list-item__name {
+  flex: 1;
+  font-weight: 600;
+  font-size: 0.92rem;
+}
+
+.itinerary-list-item__meta {
+  font-size: 0.78rem;
+  color: var(--text-muted);
+}
+
+.itinerary-detail-panel {
+  padding: 14px;
+  border-radius: 14px;
+  border: 1.5px solid var(--border);
+  background: var(--white);
+}
+
+.itinerary-detail-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  margin-bottom: 12px;
+}
+
+.itinerary-detail-head h3 {
+  margin: 0;
+  font-size: 1rem;
+}
+
+.itinerary-detail-delete {
+  border: none;
+  background: transparent;
+  padding: 6px;
+  color: var(--text-muted);
+  cursor: pointer;
+}
+
+.itinerary-detail-events {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.itinerary-detail-event {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 10px;
+  padding-bottom: 10px;
+  border-bottom: 1px solid #f0ebe6;
+}
+
+.itinerary-detail-event:last-child {
+  border-bottom: none;
+  padding-bottom: 0;
+}
+
+.itinerary-detail-event strong {
+  display: block;
+  font-size: 0.9rem;
+  margin-bottom: 4px;
+}
+
+.itinerary-detail-event span {
+  display: block;
+  font-size: 0.78rem;
+  color: var(--text-muted);
+}
+
+.itinerary-detail-remove {
+  flex-shrink: 0;
+  border: none;
+  background: none;
+  font-size: 0.78rem;
+  color: var(--orange);
+  text-decoration: underline;
+  cursor: pointer;
+}
+
+.itinerary-modal__event {
+  margin: 0 0 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  font-size: 0.88rem;
+}
+
+.itinerary-modal__event strong {
+  font-size: 0.95rem;
+}
+
+.itinerary-modal__guest {
+  margin-bottom: 16px;
+}
+
+.itinerary-modal__guest p {
+  margin: 0 0 12px;
+  color: var(--text-muted);
+}
+
+.itinerary-modal__create {
+  display: flex;
+  gap: 8px;
+  margin-bottom: 14px;
+}
+
+.itinerary-modal__create input {
+  flex: 1;
+  padding: 10px 12px;
+  border-radius: 10px;
+  border: 1.5px solid var(--border);
+  font-family: inherit;
+}
+
+.itinerary-modal__create-btn {
+  width: 44px;
+  border: none;
+  border-radius: 10px;
+  background: var(--orange);
+  color: var(--black);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+}
+
+.itinerary-modal__status {
+  margin: 0 0 12px;
+  font-size: 0.88rem;
+  color: var(--text-muted);
+  text-align: center;
+}
+
+.itinerary-pick-list {
+  list-style: none;
+  margin: 0 0 16px;
+  padding: 0;
+  max-height: 40vh;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.itinerary-pick-item {
+  width: 100%;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 12px 14px;
+  border: 1.5px solid var(--border);
+  border-radius: 12px;
+  background: var(--white);
+  text-align: left;
+  cursor: pointer;
+}
+
+.itinerary-pick-item--added {
+  border-color: var(--orange);
+  background: #fff8f2;
+  cursor: default;
+}
+
+.itinerary-pick-item__name {
+  flex: 1;
+  font-weight: 600;
+}
+
+.itinerary-pick-item__meta {
+  font-size: 0.78rem;
+  color: var(--text-muted);
+}
+
+.itinerary-pick-item__check {
+  color: var(--orange);
+}
+
+.modal-done-btn {
+  width: 100%;
+  padding: 12px;
+  border: 1.5px solid var(--border);
+  border-radius: var(--radius-pill);
+  background: var(--white);
+  font-family: inherit;
+  font-weight: 600;
+  cursor: pointer;
+}
+
 .filter-bar {
   position: relative;
   z-index: 1;
@@ -510,7 +747,7 @@ button {
 .event-card-body {
   flex: 1;
   min-width: 0;
-  padding-right: 30px;
+  padding-right: 8px;
 }
 
 .event-card-title {
@@ -524,6 +761,40 @@ button {
   -webkit-line-clamp: 2;
   -webkit-box-orient: vertical;
   overflow: hidden;
+}
+
+.event-card-title-link {
+  color: inherit;
+  text-decoration: none;
+}
+
+.event-card-title-link:hover,
+.event-card-title-link:focus-visible {
+  color: var(--orange);
+  text-decoration: underline;
+}
+
+.event-card-meta {
+  margin: 0 0 4px;
+  font-size: 0.8rem;
+  color: var(--text-muted);
+  line-height: 1.35;
+}
+
+.event-card-link {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  margin-top: 4px;
+  font-size: 0.78rem;
+  font-weight: 600;
+  color: var(--orange);
+  text-decoration: none;
+}
+
+.event-card-link:hover,
+.event-card-link:focus-visible {
+  text-decoration: underline;
 }
 
 .event-card--compact {
@@ -545,12 +816,37 @@ button {
 }
 
 .event-card--compact .event-card-body {
-  padding-right: 26px;
+  padding-right: 4px;
 }
 
-.event-card--compact .favorite-btn {
-  top: 6px;
-  right: 6px;
+.event-card-actions {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: flex-start;
+  gap: 4px;
+  flex-shrink: 0;
+  align-self: flex-start;
+}
+
+.itinerary-add-btn {
+  width: 36px;
+  height: 36px;
+  border: none;
+  border-radius: 50%;
+  background: transparent;
+  color: var(--text-muted);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  padding: 4px;
+}
+
+.itinerary-add-btn:hover,
+.itinerary-add-btn:focus-visible {
+  color: var(--orange);
+  background: #fff4eb;
 }
 
 .event-card-meta--inline {
@@ -559,16 +855,20 @@ button {
   text-overflow: ellipsis;
 }
 
+.event-card-actions .favorite-btn {
+  position: static;
+}
+
 .favorite-btn {
-  position: absolute;
-  top: 14px;
-  right: 14px;
   background: none;
   border: 2px solid transparent;
   padding: 4px;
   border-radius: 10px;
   color: var(--text-muted);
   transition: border-color 0.12s ease;
+  display: flex;
+  align-items: center;
+  justify-content: center;
 }
 
 .favorite-btn:hover,

@@ -4,6 +4,9 @@ import { LoginPage } from './components/LoginPage'
 import { SignupPage } from './components/SignupPage'
 import { DashboardPage } from './components/DashboardPage'
 import { useAuth } from './hooks/useAuth'
+import { useItineraries } from './hooks/useItineraries'
+import { AddToItineraryModal } from './components/AddToItineraryModal'
+import type { Event } from './types/event'
 import { EventTypeModal } from './components/EventTypeModal'
 import { DateModal } from './components/DateModal'
 import { TimeModal } from './components/TimeModal'
@@ -30,7 +33,9 @@ function firstMappableId(list: { id: number; latlong?: string | null }[]): numbe
 }
 
 export default function App() {
-  const { user, login, signup, logout, initializing } = useAuth()
+  const { user, login, signup, logout, initializing, isLoggedIn } = useAuth()
+  const itineraryApi = useItineraries(isLoggedIn)
+  const [itineraryEvent, setItineraryEvent] = useState<Event | null>(null)
   const [view, setView] = useState<AppView>('map')
   const [menuOpen, setMenuOpen] = useState(false)
   const [listExpanded, setListExpanded] = useState(true)
@@ -127,7 +132,17 @@ export default function App() {
 
   if (view === 'dashboard' && user) {
     return (
-      <DashboardPage user={user} onBack={goToMap} onLogout={() => void handleLogout()} />
+      <DashboardPage
+        user={user}
+        itineraries={itineraryApi.itineraries}
+        itinerariesLoading={itineraryApi.loading}
+        itinerariesError={itineraryApi.error}
+        onBack={goToMap}
+        onLogout={() => void handleLogout()}
+        onLoadDetail={itineraryApi.loadDetail}
+        onDeleteItinerary={itineraryApi.remove}
+        onRemoveEvent={itineraryApi.removeEvent}
+      />
     )
   }
 
@@ -172,6 +187,7 @@ export default function App() {
             onOpenModal={openModal}
             onClearFilters={clearFilters}
             onToggleFavorite={handleToggleFavorite}
+            onAddToItinerary={setItineraryEvent}
             onSelectEvent={setSelectedEventId}
           />
         </div>
@@ -211,6 +227,26 @@ export default function App() {
             closeModal()
           }}
           onClose={closeModal}
+        />
+      )}
+
+      {itineraryEvent && (
+        <AddToItineraryModal
+          event={itineraryEvent}
+          isLoggedIn={isLoggedIn}
+          onClose={() => setItineraryEvent(null)}
+          onListForEvent={itineraryApi.listForEvent}
+          onGoLogin={() => {
+            setItineraryEvent(null)
+            setView('login')
+          }}
+          onCreateItinerary={async (name) => {
+            const detail = await itineraryApi.create(name)
+            await itineraryApi.addEvent(detail.id, itineraryEvent.id)
+          }}
+          onAddToItinerary={async (itineraryId) => {
+            await itineraryApi.addEvent(itineraryId, itineraryEvent.id)
+          }}
         />
       )}
     </div>
