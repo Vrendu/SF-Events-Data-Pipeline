@@ -1,4 +1,5 @@
 import type { Itinerary, ItineraryDetail } from '../types/itinerary'
+import { authenticatedFetchInit } from './auth'
 
 const API_BASE = import.meta.env.VITE_API_BASE_URL ?? '/api'
 
@@ -12,28 +13,26 @@ async function parseError(res: Response): Promise<string> {
   return `Request failed (${res.status})`
 }
 
-const jsonOpts: RequestInit = {
-  credentials: 'include',
-  headers: { 'Content-Type': 'application/json' },
-}
+const jsonOpts = (): RequestInit =>
+  authenticatedFetchInit({ headers: { 'Content-Type': 'application/json' } })
 
 export async function fetchItineraries(forEventId?: number): Promise<Itinerary[]> {
   const q = forEventId != null ? `?for_event_id=${forEventId}` : ''
-  const res = await fetch(`${API_BASE}/itineraries${q}`, { credentials: 'include' })
+  const res = await fetch(`${API_BASE}/itineraries${q}`, authenticatedFetchInit())
   if (res.status === 401) throw new Error('Sign in to manage itineraries')
   if (!res.ok) throw new Error(await parseError(res))
   return res.json()
 }
 
 export async function fetchItinerary(id: string): Promise<ItineraryDetail> {
-  const res = await fetch(`${API_BASE}/itineraries/${id}`, { credentials: 'include' })
+  const res = await fetch(`${API_BASE}/itineraries/${id}`, authenticatedFetchInit())
   if (!res.ok) throw new Error(await parseError(res))
   return res.json()
 }
 
 export async function createItinerary(name: string): Promise<ItineraryDetail> {
   const res = await fetch(`${API_BASE}/itineraries`, {
-    ...jsonOpts,
+    ...jsonOpts(),
     method: 'POST',
     body: JSON.stringify({ name }),
   })
@@ -46,7 +45,7 @@ export async function addEventToItinerary(
   eventId: number,
 ): Promise<ItineraryDetail> {
   const res = await fetch(`${API_BASE}/itineraries/${itineraryId}/events`, {
-    ...jsonOpts,
+    ...jsonOpts(),
     method: 'POST',
     body: JSON.stringify({ event_id: eventId }),
   })
@@ -59,7 +58,7 @@ export async function removeEventFromItinerary(
   eventId: number,
 ): Promise<ItineraryDetail> {
   const res = await fetch(`${API_BASE}/itineraries/${itineraryId}/events/${eventId}`, {
-    ...jsonOpts,
+    ...jsonOpts(),
     method: 'DELETE',
   })
   if (!res.ok) throw new Error(await parseError(res))
@@ -68,7 +67,7 @@ export async function removeEventFromItinerary(
 
 export async function deleteItinerary(id: string): Promise<void> {
   const res = await fetch(`${API_BASE}/itineraries/${id}`, {
-    ...jsonOpts,
+    ...jsonOpts(),
     method: 'DELETE',
   })
   if (!res.ok) throw new Error(await parseError(res))

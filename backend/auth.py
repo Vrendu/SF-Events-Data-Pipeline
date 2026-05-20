@@ -47,8 +47,19 @@ def _jwt_secret() -> str:
     return "dev-insecure-jwt-secret-change-me-32chars-min!!"
 
 
+def _is_deployed() -> bool:
+    if os.getenv("RENDER", "").lower() == "true":
+        return True
+    return os.getenv("ENV", "").lower() in ("production", "prod")
+
+
 def _cookie_secure() -> bool:
-    return os.getenv("AUTH_COOKIE_SECURE", "").lower() in ("1", "true", "yes")
+    explicit = os.getenv("AUTH_COOKIE_SECURE", "").strip().lower()
+    if explicit in ("1", "true", "yes"):
+        return True
+    if explicit in ("0", "false", "no"):
+        return False
+    return _is_deployed()
 
 
 def _cookie_samesite() -> str:
@@ -57,6 +68,16 @@ def _cookie_samesite() -> str:
         return explicit
     # Cross-origin frontend + API (e.g. two Render services) needs SameSite=None + Secure.
     return "none" if _cookie_secure() else "lax"
+
+
+def _access_token_from_request(request: Request) -> Optional[str]:
+    auth = request.headers.get("authorization", "")
+    if auth.lower().startswith("bearer "):
+        token = auth[7:].strip()
+        if token:
+            return token
+    cookie = request.cookies.get(ACCESS_COOKIE)
+    return cookie or None
 
 
 def _cookie_common() -> dict:
@@ -144,6 +165,12 @@ class UserOut(BaseModel):
     displayName: str
 
 
+class AuthSessionOut(UserOut):
+    """Returned on login/register/refresh; includes a bearer token for cross-origin SPAs."""
+
+    accessToken: Optional[str] = None
+
+
 def _encode_access_token(user_id: UUID, email: str) -> str:
     now = datetime.now(timezone.utc)
     payload = {
@@ -202,7 +229,7 @@ async def _issue_session(
     email: str,
     display_name: str,
     response: Response,
-) -> UserOut:
+) -> AuthSessionOut:
     refresh_raw = secrets.token_urlsafe(48)
     refresh_hash = _hash_refresh_token(refresh_raw)
     expires_at = datetime.now(timezone.utc) + timedelta(days=REFRESH_DAYS)
@@ -220,14 +247,19 @@ async def _issue_session(
 
     access = _encode_access_token(user_id, email)
     _set_auth_cookies(response, access, refresh_raw)
-    return UserOut(id=str(user_id), email=email, displayName=display_name)
+    return AuthSessionOut(
+        id=str(user_id),
+        email=email,
+        displayName=display_name,
+        accessToken=access,
+    )
 
 
 def create_auth_router(get_db_connection) -> APIRouter:
     router = APIRouter(tags=["auth"])
 
     async def get_current_user(request: Request) -> UserOut:
-        token = request.cookies.get(ACCESS_COOKIE)
+        token = _access_token_from_request(request)
         if not token:
             raise HTTPException(status_code=401, detail="Not authenticated")
         payload = _decode_access_token(token)
@@ -244,7 +276,7 @@ def create_auth_router(get_db_connection) -> APIRouter:
             raise HTTPException(status_code=401, detail="Not authenticated")
         return _row_to_user(row)
 
-    async def try_refresh_session(request: Request, response: Response) -> Optional[UserOut]:
+    async def try_refresh_session(request: Request, response: Response) -> Optional[AuthSessionOut]:
         refresh_raw = request.cookies.get(REFRESH_COOKIE)
         if not refresh_raw:
             return None
@@ -273,7 +305,7 @@ def create_auth_router(get_db_connection) -> APIRouter:
                 response,
             )
 
-    @router.post("/auth/register", response_model=UserOut)
+    @router.post("/auth/register", response_model=AuthSessionOut)
     async def register(body: RegisterBody, request: Request, response: Response):
         _check_rate_limit(request, "register")
         email = body.email.strip().lower()
@@ -302,7 +334,7 @@ def create_auth_router(get_db_connection) -> APIRouter:
             _clear_rate_limit(request, "register")
             return await _issue_session(conn, user_id, email, display_name[:80], response)
 
-    @router.post("/auth/login", response_model=UserOut)
+    @router.post("/auth/login", response_model=AuthSessionOut)
     async def login(body: LoginBody, request: Request, response: Response):
         _check_rate_limit(request, "login")
         email = body.email.strip().lower()
@@ -334,10 +366,17 @@ def create_auth_router(get_db_connection) -> APIRouter:
         _clear_auth_cookies(response)
         return {"ok": True}
 
-    @router.get("/auth/me", response_model=UserOut)
+    @router.get("/auth/me", response_model=AuthSessionOut)
     async def me(request: Request, response: Response):
         try:
-            return await get_current_user(request)
+            user = await get_current_user(request)
+            token = _access_token_from_request(request)
+            return AuthSessionOut(
+                id=user.id,
+                email=user.email,
+                displayName=user.displayName,
+                accessToken=token,
+            )
         except HTTPException as exc:
             if exc.status_code != 401:
                 raise

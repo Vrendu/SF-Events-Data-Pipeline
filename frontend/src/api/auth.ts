@@ -1,6 +1,19 @@
 import type { User } from '../types/user'
+import {
+  clearAccessToken,
+  setAccessToken,
+  withAuthHeaders,
+} from '../utils/authSession'
 
 const API_BASE = import.meta.env.VITE_API_BASE_URL ?? '/api'
+
+type AuthSession = User & { accessToken?: string | null }
+
+function persistSession(body: AuthSession): User {
+  if (body.accessToken) setAccessToken(body.accessToken)
+  const { accessToken: _t, ...user } = body
+  return user
+}
 
 async function parseAuthError(res: Response): Promise<string> {
   try {
@@ -18,11 +31,25 @@ const jsonOpts: RequestInit = {
   headers: { 'Content-Type': 'application/json' },
 }
 
+function authJsonOpts(): RequestInit {
+  return {
+    credentials: 'include',
+    headers: withAuthHeaders({ 'Content-Type': 'application/json' }),
+  }
+}
+
 export async function fetchCurrentUser(): Promise<User | null> {
-  const res = await fetch(`${API_BASE}/auth/me`, { credentials: 'include' })
-  if (res.status === 401) return null
+  const res = await fetch(`${API_BASE}/auth/me`, {
+    credentials: 'include',
+    headers: withAuthHeaders(),
+  })
+  if (res.status === 401) {
+    clearAccessToken()
+    return null
+  }
   if (!res.ok) throw new Error(await parseAuthError(res))
-  return res.json()
+  const body = (await res.json()) as AuthSession
+  return persistSession(body)
 }
 
 export async function loginUser(email: string, password: string): Promise<User> {
@@ -32,7 +59,8 @@ export async function loginUser(email: string, password: string): Promise<User> 
     body: JSON.stringify({ email, password }),
   })
   if (!res.ok) throw new Error(await parseAuthError(res))
-  return res.json()
+  const body = (await res.json()) as AuthSession
+  return persistSession(body)
 }
 
 export async function registerUser(
@@ -50,13 +78,24 @@ export async function registerUser(
     }),
   })
   if (!res.ok) throw new Error(await parseAuthError(res))
-  return res.json()
+  const body = (await res.json()) as AuthSession
+  return persistSession(body)
 }
 
 export async function logoutUser(): Promise<void> {
   const res = await fetch(`${API_BASE}/auth/logout`, {
-    ...jsonOpts,
+    ...authJsonOpts(),
     method: 'POST',
   })
+  clearAccessToken()
   if (!res.ok) throw new Error(await parseAuthError(res))
+}
+
+/** Headers for authenticated API calls (itineraries, favorites). */
+export function authenticatedFetchInit(init: RequestInit = {}): RequestInit {
+  return {
+    ...init,
+    credentials: 'include',
+    headers: withAuthHeaders(init.headers),
+  }
 }
