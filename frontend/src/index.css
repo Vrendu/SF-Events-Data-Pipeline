@@ -1198,6 +1198,11 @@ button {
     0 0 0 2px var(--hit-border);
 }
 
+.map-marker-wrap,
+.map-marker--hoverable {
+  position: relative;
+}
+
 .map-marker-wrap {
   display: flex;
   flex-direction: column;
@@ -1247,6 +1252,74 @@ button {
   background: var(--orange);
   border: 2px solid var(--white);
   box-shadow: 0 2px 6px rgba(0, 0, 0, 0.2);
+}
+
+.map-marker-tooltip {
+  position: absolute;
+  bottom: calc(100% + 10px);
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 5;
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  min-width: 160px;
+  max-width: 240px;
+  padding: 10px 12px;
+  border-radius: 12px;
+  background: var(--white);
+  border: 1.5px solid var(--border);
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.14);
+  pointer-events: none;
+  text-align: left;
+  animation: map-tooltip-in 0.15s ease;
+}
+
+.map-marker-tooltip::after {
+  content: '';
+  position: absolute;
+  top: 100%;
+  left: 50%;
+  transform: translateX(-50%);
+  border: 7px solid transparent;
+  border-top-color: var(--white);
+  filter: drop-shadow(0 2px 1px rgba(0, 0, 0, 0.06));
+}
+
+.map-marker-tooltip__title {
+  display: block;
+  font-size: 0.82rem;
+  font-weight: 700;
+  line-height: 1.25;
+  color: var(--text);
+}
+
+.map-marker-tooltip__meta {
+  display: block;
+  font-size: 0.75rem;
+  line-height: 1.35;
+  color: var(--text-muted);
+}
+
+.map-marker-tooltip__source {
+  display: block;
+  margin-top: 2px;
+  font-size: 0.68rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--orange);
+}
+
+@keyframes map-tooltip-in {
+  from {
+    opacity: 0;
+    transform: translateX(-50%) translateY(4px);
+  }
+  to {
+    opacity: 1;
+    transform: translateX(-50%) translateY(0);
+  }
 }
 
 .map-toast {

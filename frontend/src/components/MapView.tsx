@@ -3,7 +3,9 @@ import Map, { Marker, type MapRef } from 'react-map-gl/mapbox'
 import 'mapbox-gl/dist/mapbox-gl.css'
 import { getMapboxAccessToken } from '../config/env'
 import type { Event } from '../types/event'
+import { formatEventDate, formatEventTime } from '../utils/dates'
 import { parseLatLong } from '../utils/geo'
+import { formatEventSource } from '../utils/source'
 
 /** Downtown San Francisco (lng, lat) — viewport is always anchored here unless the user picks another pin */
 const SF_CENTER: [number, number] = [-122.4194, 37.7749]
@@ -17,6 +19,16 @@ export interface MapPin {
   lat: number
   title: string
   label: string
+  venue: string
+  when: string
+  sourceLabel: string
+}
+
+function formatPinWhen(datetime?: string): string {
+  if (!datetime) return 'Date TBA'
+  const date = formatEventDate(datetime)
+  const time = formatEventTime(datetime)
+  return time ? `${date} · ${time}` : date
 }
 
 export interface MapViewProps {
@@ -29,6 +41,7 @@ export interface MapViewProps {
 export function MapView({ events, selectedEventId, onSelectEvent, listExpanded }: MapViewProps) {
   const mapRef = useRef<MapRef>(null)
   const [ready, setReady] = useState(false)
+  const [hoveredPinId, setHoveredPinId] = useState<number | null>(null)
   const token = getMapboxAccessToken()
   /** Skip flying on first hydrated selection; only fly when the user picks another event */
   const prevSelectedRef = useRef<number | null | undefined>(undefined)
@@ -46,6 +59,9 @@ export function MapView({ events, selectedEventId, onSelectEvent, listExpanded }
         lat: coords[1],
         title: e.title,
         label: String(n).padStart(2, '0'),
+        venue: e.venue || e.location || '',
+        when: formatPinWhen(e.datetime),
+        sourceLabel: formatEventSource(e.source) ?? '',
       })
     }
     return list
@@ -140,27 +156,54 @@ export function MapView({ events, selectedEventId, onSelectEvent, listExpanded }
       >
         {pins.map((p) => {
           const isSel = selectedEventId === p.id
+          const isHovered = hoveredPinId === p.id
+          const markerProps = {
+            onMouseEnter: () => setHoveredPinId(p.id),
+            onMouseLeave: () => setHoveredPinId((id) => (id === p.id ? null : id)),
+            onFocus: () => setHoveredPinId(p.id),
+            onBlur: () => setHoveredPinId((id) => (id === p.id ? null : id)),
+          }
+          const tooltip = isHovered ? (
+            <div className="map-marker-tooltip" role="tooltip">
+              <strong className="map-marker-tooltip__title">{p.title}</strong>
+              <span className="map-marker-tooltip__meta">{p.when}</span>
+              {p.venue ? <span className="map-marker-tooltip__meta">{p.venue}</span> : null}
+              {p.sourceLabel ? (
+                <span className="map-marker-tooltip__source">{p.sourceLabel}</span>
+              ) : null}
+            </div>
+          ) : null
+
           return (
-            <Marker key={p.id} longitude={p.lng} latitude={p.lat} anchor="bottom">
+            <Marker
+              key={p.id}
+              longitude={p.lng}
+              latitude={p.lat}
+              anchor="bottom"
+              style={{ zIndex: isHovered || isSel ? 10 : 1 }}
+            >
               {isSel ? (
                 <button
                   type="button"
                   className="map-marker-wrap"
-                  title={p.title}
                   aria-label={p.title}
                   onClick={() => onSelectEvent(p.id)}
+                  {...markerProps}
                 >
+                  {tooltip}
                   <span className="map-marker-pill">{p.label}</span>
                   <span className="map-marker-dot" />
                 </button>
               ) : (
                 <button
                   type="button"
-                  className="map-marker"
-                  title={p.title}
+                  className="map-marker map-marker--hoverable"
                   aria-label={p.title}
                   onClick={() => onSelectEvent(p.id)}
-                />
+                  {...markerProps}
+                >
+                  {tooltip}
+                </button>
               )}
             </Marker>
           )
