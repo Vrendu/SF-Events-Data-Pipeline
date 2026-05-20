@@ -91,7 +91,7 @@ export function EventCard({
             <p className="event-card-meta">{formatEventDate(event.datetime)}</p>
             {event.datetime && <p className="event-card-meta">{formatEventTime(event.datetime)}</p>}
             <p className="event-card-meta">{location}</p>
-            {sourceLabel && <p className="event-card-meta event-card-source">{sourceLabel}</p>}
+            
             {eventUrl && (
               <a
                 href={eventUrl}
