@@ -9,6 +9,8 @@ export default defineConfig(({ mode }) => {
     preview: {
       host: '0.0.0.0',
       port: Number(process.env.PORT) || 4173,
+      // Render (and similar) send the public hostname; Vite blocks unknown Host headers by default.
+      allowedHosts: ['.onrender.com', 'plotted-d5i7.onrender.com'],
     },
     server: {
       proxy: {
