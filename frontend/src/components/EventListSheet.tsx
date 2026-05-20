@@ -9,6 +9,7 @@ interface EventListSheetProps {
   events: Event[]
   filters: EventFilters
   favorites: Set<number>
+  isLoggedIn: boolean
   selectedEventId: number | null
   loading: boolean
   onOpenModal: (modal: FilterModal) => void
@@ -24,6 +25,7 @@ export function EventListSheet({
   events,
   filters,
   favorites,
+  isLoggedIn,
   selectedEventId,
   loading,
   onOpenModal,
@@ -72,6 +74,7 @@ export function EventListSheet({
             <EventList
               events={events}
               favorites={favorites}
+              isLoggedIn={isLoggedIn}
               selectedEventId={selectedEventId}
               onToggleFavorite={onToggleFavorite}
               onAddToItinerary={onAddToItinerary}
@@ -98,6 +101,7 @@ export function EventListSheet({
             <EventList
               events={events}
               favorites={favorites}
+              isLoggedIn={isLoggedIn}
               selectedEventId={selectedEventId}
               onToggleFavorite={onToggleFavorite}
               onAddToItinerary={onAddToItinerary}

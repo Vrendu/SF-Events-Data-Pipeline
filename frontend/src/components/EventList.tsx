@@ -4,6 +4,7 @@ import { EventCard } from './EventCard'
 interface EventListProps {
   events: Event[]
   favorites: Set<number>
+  isLoggedIn?: boolean
   selectedEventId?: number | null
   onToggleFavorite: (id: number) => void
   onAddToItinerary?: (event: Event) => void
@@ -18,6 +19,7 @@ interface EventListProps {
 export function EventList({
   events,
   favorites,
+  isLoggedIn = false,
   selectedEventId,
   onToggleFavorite,
   onAddToItinerary,
@@ -39,6 +41,7 @@ export function EventList({
           key={event.id}
           event={event}
           liked={favorites.has(event.id)}
+          isLoggedIn={isLoggedIn}
           selected={selectedEventId === event.id}
           compact={compact}
           onToggleFavorite={onToggleFavorite}

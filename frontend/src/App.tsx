@@ -197,6 +197,7 @@ export default function App() {
             events={events}
             filters={appliedFilters}
             favorites={favoritesApi.favoriteIds}
+            isLoggedIn={isLoggedIn}
             selectedEventId={selectedEventId}
             loading={loading}
             onOpenModal={openModal}

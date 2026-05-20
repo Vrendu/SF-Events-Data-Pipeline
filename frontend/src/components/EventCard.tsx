@@ -7,6 +7,7 @@ import { formatEventSource } from '../utils/source'
 interface EventCardProps {
   event: Event
   liked: boolean
+  isLoggedIn?: boolean
   selected?: boolean
   compact?: boolean
   onToggleFavorite: (id: number) => void
@@ -17,6 +18,7 @@ interface EventCardProps {
 export function EventCard({
   event,
   liked,
+  isLoggedIn = false,
   selected,
   compact,
   onToggleFavorite,
@@ -121,17 +123,19 @@ export function EventCard({
             <CalendarPlus size={compact ? 16 : 18} />
           </button>
         )}
-        <button
-          type="button"
-          className={`favorite-btn ${liked ? 'is-liked' : ''}`}
-          aria-label={liked ? 'Remove from favorites' : 'Save event'}
-          onClick={(e) => {
-            e.stopPropagation()
-            onToggleFavorite(event.id)
-          }}
-        >
-          <Heart size={compact ? 16 : 18} fill={liked ? 'currentColor' : 'none'} />
-        </button>
+        {isLoggedIn && (
+          <button
+            type="button"
+            className={`favorite-btn ${liked ? 'is-liked' : ''}`}
+            aria-label={liked ? 'Remove from favorites' : 'Save event'}
+            onClick={(e) => {
+              e.stopPropagation()
+              onToggleFavorite(event.id)
+            }}
+          >
+            <Heart size={compact ? 16 : 18} fill={liked ? 'currentColor' : 'none'} />
+          </button>
+        )}
       </div>
     </article>
   )
