@@ -29,6 +29,7 @@ from data_from_apis.data_resident_advisor import scrape_from_resident_advisor
 from scraping.scraping_city_and_public import scrape_sfrecpark
 from auth import create_auth_router
 from itineraries import create_itineraries_router
+from favorites import create_favorites_router
 
 load_dotenv()
 
@@ -57,6 +58,7 @@ async def verify_read_key(key: str = Security(_api_key_header)) -> None:
 
 # In-memory cache for geocoded locations to avoid redundant API calls
 _geocode_cache: dict = {}
+_geocode_lock = asyncio.Lock()
 
 # Connection pool for query endpoints (created on startup).
 db_pool: Optional[asyncpg.Pool] = None
@@ -106,32 +108,36 @@ async def geocode_location(location: str) -> Optional[str]:
     if cache_key in _geocode_cache:
         return _geocode_cache[cache_key]
 
-    # Nominatim's ToS requires max 1 request/second
-    await asyncio.sleep(1.1)
+    async with _geocode_lock:
+        if cache_key in _geocode_cache:
+            return _geocode_cache[cache_key]
 
-    try:
-        print(f"📍 Geolocating: {location}")
-        async with httpx.AsyncClient(timeout=10.0) as client:
-            response = await client.get(
-                "https://nominatim.openstreetmap.org/search",
-                params={"q": location, "format": "json", "limit": 1},
-                headers={"User-Agent": "EventsScraperApp/1.0"},
-            )
-            response.raise_for_status()
-            results = response.json()
+        # Nominatim's ToS requires max 1 request/second
+        await asyncio.sleep(1.1)
 
-        if results:
-            lat = results[0]["lat"]
-            lon = results[0]["lon"]
-            latlong = f"{lat},{lon}"
-            _geocode_cache[cache_key] = latlong
-            return latlong
+        try:
+            print(f"📍 Geolocating: {location}")
+            async with httpx.AsyncClient(timeout=10.0) as client:
+                response = await client.get(
+                    "https://nominatim.openstreetmap.org/search",
+                    params={"q": location, "format": "json", "limit": 1},
+                    headers={"User-Agent": "EventsScraperApp/1.0"},
+                )
+                response.raise_for_status()
+                results = response.json()
 
-    except Exception as e:
-        print(f"⚠️  Geocoding failed for '{location}': {e}")
+            if results:
+                lat = results[0]["lat"]
+                lon = results[0]["lon"]
+                latlong = f"{lat},{lon}"
+                _geocode_cache[cache_key] = latlong
+                return latlong
 
-    _geocode_cache[cache_key] = None
-    return None
+        except Exception as e:
+            print(f"⚠️  Geocoding failed for '{location}': {e}")
+
+        _geocode_cache[cache_key] = None
+        return None
 
 
 app = FastAPI(title="Events Scraper API", version="1.0.0")
@@ -277,9 +283,14 @@ async def init_db():
             END $$;
             """)
 
+        # Legacy dedupe index removed — identity is title + venue + source (see populate_database).
+        await conn.execute("DROP INDEX IF EXISTS idx_events_title")
         await conn.execute("""
-            CREATE UNIQUE INDEX IF NOT EXISTS idx_events_title ON events (title, datetime, venue);
-             """)
+            CREATE INDEX IF NOT EXISTS idx_events_identity_lookup
+            ON events (title, venue, source)
+            """)
+
+        await _backfill_missing_event_ids(conn)
 
         await conn.execute("""
             CREATE TABLE IF NOT EXISTS users (
@@ -330,6 +341,20 @@ async def init_db():
             CREATE INDEX IF NOT EXISTS idx_itineraries_user
             ON itineraries (user_id)
             """)
+
+        await conn.execute("""
+            CREATE TABLE IF NOT EXISTS user_favorites (
+                user_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+                event_id INTEGER NOT NULL REFERENCES events(id) ON DELETE CASCADE,
+                created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+                PRIMARY KEY (user_id, event_id)
+            )
+            """)
+
+        await conn.execute("""
+            CREATE INDEX IF NOT EXISTS idx_user_favorites_user
+            ON user_favorites (user_id)
+            """)
     finally:
         await conn.close()
 
@@ -337,6 +362,7 @@ async def init_db():
 _auth_router, get_current_user = create_auth_router(db_connection)
 app.include_router(_auth_router)
 app.include_router(create_itineraries_router(db_connection, get_current_user))
+app.include_router(create_favorites_router(db_connection, get_current_user))
 
 
 @app.on_event("startup")
@@ -356,11 +382,195 @@ async def shutdown_event():
         db_pool = None
 
 
+def _parse_event_id(event: dict) -> Optional[int]:
+    """Return a positive integer id from an event dict, or None if absent/invalid."""
+    raw_id = event.get("id")
+    if raw_id is None:
+        return None
+    try:
+        parsed = int(raw_id)
+        return parsed if parsed > 0 else None
+    except (TypeError, ValueError):
+        return None
+
+
+async def _backfill_missing_event_ids(conn: asyncpg.Connection) -> int:
+    """Assign SERIAL ids to any legacy rows missing id; keep sequence in sync."""
+    result = await conn.execute(
+        """
+        UPDATE events
+        SET id = nextval(pg_get_serial_sequence('events', 'id'))
+        WHERE id IS NULL
+        """
+    )
+    await conn.execute(
+        """
+        SELECT setval(
+            pg_get_serial_sequence('events', 'id'),
+            GREATEST(COALESCE((SELECT MAX(id) FROM events), 0), 1)
+        )
+        """
+    )
+    # result like "UPDATE 3"
+    try:
+        return int(result.split()[-1])
+    except (ValueError, IndexError):
+        return 0
+
+
+def _normalize_identity_field(value: Any) -> str:
+    if value is None:
+        return ""
+    if not isinstance(value, str):
+        value = str(value)
+    return value.strip()
+
+
+def _optional_text(value: Any) -> Optional[str]:
+    if value is None:
+        return None
+    if not isinstance(value, str):
+        value = str(value)
+    text = value.strip()
+    return text or None
+
+
+async def _find_existing_event_id(
+    conn: asyncpg.Connection,
+    title: str,
+    venue: Optional[str],
+    source: Optional[str],
+) -> Optional[int]:
+    """Match on title + venue + source (NULL-safe). Prefer undated rows when duplicates exist."""
+    row = await conn.fetchrow(
+        """
+        SELECT id
+        FROM events
+        WHERE title = $1
+          AND COALESCE(TRIM(venue), '') = $2
+          AND COALESCE(TRIM(source), '') = $3
+        ORDER BY datetime NULLS FIRST, id ASC
+        LIMIT 1
+        """,
+        title,
+        _normalize_identity_field(venue),
+        _normalize_identity_field(source),
+    )
+    return int(row["id"]) if row else None
+
+
+async def _upsert_event_row(
+    conn: asyncpg.Connection,
+    event: dict,
+    categories: List[str],
+    explicit_id: Optional[int],
+) -> tuple[int, bool]:
+    """
+    Insert or update by title + venue + source.
+    Returns (event_id, was_inserted).
+    """
+    title = _optional_text(event.get("title"))
+    if not title:
+        raise ValueError("Event title is required")
+
+    venue = _optional_text(event.get("venue"))
+    source = _optional_text(event.get("source"))
+    datetime_val = _optional_text(event.get("datetime"))
+    location = _optional_text(event.get("location"))
+    latlong = _optional_text(event.get("latlong"))
+    url = _optional_text(event.get("url"))
+    description = _optional_text(event.get("description"))
+
+    existing_id = await _find_existing_event_id(conn, title, venue, source)
+
+    if existing_id is not None:
+        row = await conn.fetchrow(
+            """
+            UPDATE events
+            SET
+                datetime = COALESCE($2, datetime),
+                location = COALESCE($3, location),
+                latlong = COALESCE(events.latlong, $4),
+                url = COALESCE($5, url),
+                description = COALESCE($6, description),
+                categories = $7 || events.categories
+            WHERE id = $1
+            RETURNING id
+            """,
+            existing_id,
+            datetime_val,
+            location,
+            latlong,
+            url,
+            description,
+            categories,
+        )
+        if row is None:
+            raise RuntimeError(f"Failed to update event id={existing_id}")
+        return int(row["id"]), False
+
+    row = await conn.fetchrow(
+        """
+        INSERT INTO events (
+            id, title, datetime, venue, location, latlong,
+            url, description, categories, source
+        )
+        VALUES (
+            COALESCE($1::int, nextval(pg_get_serial_sequence('events', 'id'))::int),
+            $2, $3, $4, $5, $6, $7, $8, $9, $10
+        )
+        RETURNING id
+        """,
+        explicit_id,
+        title,
+        datetime_val,
+        venue,
+        location,
+        latlong,
+        url,
+        description,
+        categories,
+        source,
+    )
+    if row is None:
+        raise RuntimeError("Failed to insert event")
+    return int(row["id"]), True
+
+
+async def _latlong_by_location_from_db(
+    conn: asyncpg.Connection, locations: List[str]
+) -> dict[str, str]:
+    """Reuse coordinates already stored for the same location string."""
+    keys = sorted({loc.strip().lower() for loc in locations if loc and loc.strip()})
+    if not keys:
+        return {}
+
+    rows = await conn.fetch(
+        """
+        SELECT LOWER(TRIM(location)) AS loc_key, latlong
+        FROM events
+        WHERE latlong IS NOT NULL
+          AND location IS NOT NULL
+          AND LOWER(TRIM(location)) = ANY($1::text[])
+        """,
+        keys,
+    )
+    out: dict[str, str] = {}
+    for row in rows:
+        loc_key = row["loc_key"]
+        if loc_key and loc_key not in out:
+            out[loc_key] = row["latlong"]
+    return out
+
+
 async def populate_database(events: List[dict]):
     conn = await asyncpg.connect(DATABASE_URL, **_get_connect_kwargs())
     inserted_count = 0
+    updated_count = 0
     skipped_count = 0
-    geocode_count = 0
+    geocode_api_count = 0
+    geocode_db_reuse_count = 0
+    geocode_skipped_count = 0
     source_names = sorted(
         source
         for source in {event.get("source") for event in events}
@@ -368,15 +578,44 @@ async def populate_database(events: List[dict]):
     )
 
     try:
+        backfilled = await _backfill_missing_event_ids(conn)
+        if backfilled:
+            print(f"🔢 Backfilled {backfilled} event(s) missing database id")
+
+        locations_to_resolve = [
+            event["location"]
+            for event in events
+            if not event.get("latlong") and event.get("location")
+        ]
+        db_latlong = await _latlong_by_location_from_db(conn, locations_to_resolve)
+
         print(
             f"💾 Populating database with {len(events)} events"
             f" from {', '.join(source_names) if source_names else 'unknown sources'}"
         )
+        if db_latlong:
+            print(f"📍 Reusing latlong for {len(db_latlong)} known location(s) from DB")
+
         for event in events:
             try:
                 if not event.get("latlong") and event.get("location"):
-                    geocode_count += 1
-                    event["latlong"] = await geocode_location(event["location"])
+                    loc_key = event["location"].strip().lower()
+                    if loc_key in db_latlong:
+                        event["latlong"] = db_latlong[loc_key]
+                        geocode_db_reuse_count += 1
+                    else:
+                        cached = _geocode_cache.get(loc_key)
+                        if cached:
+                            event["latlong"] = cached
+                            geocode_skipped_count += 1
+                        else:
+                            geocode_api_count += 1
+                            resolved = await geocode_location(event["location"])
+                            event["latlong"] = resolved
+                            if resolved:
+                                db_latlong[loc_key] = resolved
+                elif event.get("latlong"):
+                    geocode_skipped_count += 1
 
                 categories = determine_categories(
                     event.get("title"),
@@ -385,36 +624,25 @@ async def populate_database(events: List[dict]):
                     event.get("categories"),
                 )
                 categories = [category.lower() for category in categories]
-                row = await conn.fetchrow(
-                    """
-                    INSERT INTO events (title, datetime, venue, location, latlong, url, description, categories, source)
-                    VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
-                    ON CONFLICT (title, datetime, venue) 
-                    DO UPDATE SET
-                        categories = EXCLUDED.categories || events.categories,
-                        latlong = COALESCE(events.latlong, EXCLUDED.latlong)
-                    RETURNING (xmax = 0) AS inserted
-                    """,
-                    event.get("title"),
-                    event.get("datetime"),
-                    event.get("venue"),
-                    event.get("location"),
-                    event.get("latlong"),
-                    event.get("url"),
-                    event.get("description"),
-                    categories,
-                    event.get("source"),
+                event_id, was_inserted = await _upsert_event_row(
+                    conn, event, categories, _parse_event_id(event)
                 )
-                if row["inserted"]:
+                event["id"] = event_id
+                if was_inserted:
                     inserted_count += 1
                 else:
-                    skipped_count += 1
+                    updated_count += 1
 
             except Exception as e:
+                print(f"⚠️  Skipped event {event.get('title')!r}: {e}")
+                skipped_count += 1
                 continue
 
         print(
-            f"\n📊 Database summary: {inserted_count} inserted, {skipped_count} duplicates skipped, {geocode_count} geocoded"
+            f"\n📊 Database summary: {inserted_count} inserted, {updated_count} updated, "
+            f"{skipped_count} skipped, "
+            f"{geocode_api_count} geocoded via API, {geocode_db_reuse_count} from DB, "
+            f"{geocode_skipped_count} already had coordinates"
         )
     finally:
         await conn.close()

@@ -5,6 +5,7 @@ import { SignupPage } from './components/SignupPage'
 import { DashboardPage } from './components/DashboardPage'
 import { useAuth } from './hooks/useAuth'
 import { useItineraries } from './hooks/useItineraries'
+import { useFavorites } from './hooks/useFavorites'
 import { AddToItineraryModal } from './components/AddToItineraryModal'
 import type { Event } from './types/event'
 import { EventTypeModal } from './components/EventTypeModal'
@@ -17,7 +18,7 @@ const MapView = lazy(() =>
 import type { FilterModal } from './components/FilterBar'
 import { useEvents } from './hooks/useEvents'
 import type { EventFilters } from './types/event'
-import { clearFavorites, getFavoriteIds, toggleFavorite } from './utils/favorites'
+import { clearItinerariesCache, readItinerariesCache } from './utils/itineraryStorage'
 import { readStoredFilters, writeStoredFilters } from './utils/filterStorage'
 import type { TimeOfDay } from './utils/dates'
 import { defaultEventFilters } from './utils/dates'
@@ -34,15 +35,15 @@ function firstMappableId(list: { id: number; latlong?: string | null }[]): numbe
 
 export default function App() {
   const { user, login, signup, logout, initializing, isLoggedIn } = useAuth()
-  const itineraryApi = useItineraries(isLoggedIn)
+  const itineraryApi = useItineraries(user?.id ?? null)
+  const favoritesApi = useFavorites(user?.id ?? null)
   const [itineraryEvent, setItineraryEvent] = useState<Event | null>(null)
   const [view, setView] = useState<AppView>('map')
   const [menuOpen, setMenuOpen] = useState(false)
-  const [listExpanded, setListExpanded] = useState(true)
+  const [listExpanded, setListExpanded] = useState(false)
   const [filters, setFilters] = useState<EventFilters>(() => readStoredFilters())
   const [appliedFilters, setAppliedFilters] = useState<EventFilters>(() => readStoredFilters())
   const [modal, setModal] = useState<FilterModal>(null)
-  const [favorites, setFavorites] = useState<Set<number>>(() => getFavoriteIds())
   const [selectedEventId, setSelectedEventId] = useState<number | null>(null)
 
   const { events, loading, error } = useEvents(appliedFilters)
@@ -64,9 +65,12 @@ export default function App() {
     setAppliedFilters(next)
   }, [])
 
-  const handleToggleFavorite = useCallback((id: number) => {
-    setFavorites(toggleFavorite(id))
-  }, [])
+  const handleToggleFavorite = useCallback(
+    (id: number) => {
+      void favoritesApi.toggle(id)
+    },
+    [favoritesApi.toggle],
+  )
 
   const closeModal = () => setModal(null)
 
@@ -99,16 +103,23 @@ export default function App() {
 
   const handleLogout = useCallback(async () => {
     await logout()
-    clearFavorites()
-    setFavorites(new Set())
+    favoritesApi.clear()
+    clearItinerariesCache()
     setView('map')
-  }, [logout])
+  }, [logout, favoritesApi.clear])
 
   useEffect(() => {
     if (view === 'dashboard' && !user && !initializing) {
       setView('map')
     }
   }, [view, user, initializing])
+
+  useEffect(() => {
+    if (view !== 'dashboard' || !user?.id) return
+    const cached = readItinerariesCache(user.id)
+    void itineraryApi.refresh({ silent: (cached?.length ?? 0) > 0 })
+    void favoritesApi.refresh({ silent: favoritesApi.favoriteEvents.length > 0 })
+  }, [view, user?.id, itineraryApi.refresh, favoritesApi.refresh, favoritesApi.favoriteEvents.length])
 
   if (view === 'login') {
     return (
@@ -137,11 +148,15 @@ export default function App() {
         itineraries={itineraryApi.itineraries}
         itinerariesLoading={itineraryApi.loading}
         itinerariesError={itineraryApi.error}
+        favorites={favoritesApi.favoriteEvents}
+        favoritesLoading={favoritesApi.loading}
+        favoritesError={favoritesApi.error}
         onBack={goToMap}
         onLogout={() => void handleLogout()}
         onLoadDetail={itineraryApi.loadDetail}
         onDeleteItinerary={itineraryApi.remove}
         onRemoveEvent={itineraryApi.removeEvent}
+        onRemoveFavorite={favoritesApi.remove}
       />
     )
   }
@@ -181,7 +196,7 @@ export default function App() {
             onToggleExpand={toggleList}
             events={events}
             filters={appliedFilters}
-            favorites={favorites}
+            favorites={favoritesApi.favoriteIds}
             selectedEventId={selectedEventId}
             loading={loading}
             onOpenModal={openModal}

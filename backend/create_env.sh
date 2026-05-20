@@ -10,6 +10,10 @@ JWT_SECRET=$(openssl rand -hex 32 2>/dev/null || python3 -c "import secrets; pri
 {
   echo "DATABASE_URL=postgresql://${USERNAME}@localhost:5432/${DB_NAME}"
   echo "AUTH_JWT_SECRET=${JWT_SECRET}"
+  echo "# Optional scraper tuning (defaults shown):"
+  echo "# SCRAPE_DAYS_AHEAD=14"
+  echo "# SCRAPE_MAX_SFRECPARK_EVENTS=200"
+  echo "# SFRECPARK_CONCURRENCY=5"
 } > .env
 
 echo "✅ Created .env file with:"

@@ -350,8 +350,82 @@ button {
   line-height: 1.45;
 }
 
-.dashboard-page__body {
-  max-width: 520px;
+.app.dashboard-page {
+  background: var(--cream);
+}
+
+.dashboard-page__head {
+  flex-shrink: 0;
+  padding: calc(12px + var(--safe-top)) 16px 8px;
+}
+
+.dashboard-page__intro {
+  flex-shrink: 0;
+  padding: 0 16px 12px;
+}
+
+.dashboard-page__intro .auth-page__title {
+  margin: 0 0 4px;
+  font-size: 1.4rem;
+}
+
+.dashboard-page__intro .auth-page__subtitle {
+  margin: 0 0 12px;
+  font-size: 0.85rem;
+}
+
+.dashboard-page__main {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  padding: 0 16px;
+}
+
+.dashboard-page__footer {
+  flex-shrink: 0;
+  padding: 8px 16px calc(12px + var(--safe-bottom));
+}
+
+.dashboard-page__footer .auth-form__submit {
+  margin: 0;
+  width: 100%;
+}
+
+.dashboard-panel {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+.dashboard-scroll {
+  flex: 1;
+  min-height: 0;
+  overflow-x: hidden;
+  overflow-y: auto;
+  -webkit-overflow-scrolling: touch;
+  overscroll-behavior: contain;
+}
+
+.dashboard-favorites-panel {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  padding: 0;
+  border: none;
+  background: transparent;
+}
+
+.dashboard-favorites-panel .itinerary-detail-events {
+  padding: 14px;
+  border-radius: 14px;
+  border: 1.5px solid var(--border);
+  background: var(--white);
 }
 
 .dashboard-section-title {
@@ -360,11 +434,135 @@ button {
   font-weight: 700;
 }
 
+.dashboard-view-toggle {
+  display: flex;
+  gap: 4px;
+  margin-bottom: 0;
+  padding: 4px;
+  border-radius: 12px;
+  background: var(--white);
+  border: 1.5px solid var(--border);
+}
+
+.dashboard-view-toggle__btn {
+  flex: 1;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  padding: 10px 12px;
+  border: none;
+  border-radius: 8px;
+  background: transparent;
+  font-family: inherit;
+  font-size: 0.9rem;
+  font-weight: 600;
+  color: var(--text-muted);
+  cursor: pointer;
+  transition: background 0.15s ease, color 0.15s ease;
+}
+
+.dashboard-view-toggle__btn.is-active {
+  background: var(--orange-soft);
+  color: var(--orange);
+}
+
+.dashboard-view-toggle__count {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 1.25rem;
+  padding: 0 5px;
+  border-radius: 999px;
+  font-size: 0.72rem;
+  font-weight: 700;
+  background: rgba(232, 90, 44, 0.15);
+  color: var(--orange);
+}
+
+.dashboard-view-toggle__btn:not(.is-active) .dashboard-view-toggle__count {
+  background: var(--border);
+  color: var(--text-muted);
+}
+
+.dashboard-favorites {
+  margin-bottom: 0;
+}
+
+.dashboard-favorites-list__link {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  margin-top: 4px;
+}
+
 .dashboard-itineraries-layout {
+  flex: 1;
+  min-height: 0;
   display: flex;
   flex-direction: column;
-  gap: 16px;
-  margin-bottom: 24px;
+  gap: 12px;
+  margin-bottom: 0;
+  overflow: hidden;
+}
+
+.itinerary-tabs {
+  flex-shrink: 0;
+  display: flex;
+  align-self: center;
+  gap: 8px;
+  overflow-x: auto;
+  padding-bottom: 4px;
+  margin: 0 -4px;
+  scroll-snap-type: x mandatory;
+  -webkit-overflow-scrolling: touch;
+}
+
+.itinerary-tabs::-webkit-scrollbar {
+  height: 4px;
+}
+
+.itinerary-tabs::-webkit-scrollbar-thumb {
+  background: var(--border);
+  border-radius: 4px;
+}
+
+.itinerary-tab {
+  flex: 0 0 auto;
+  scroll-snap-align: start;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 2px;
+  min-width: 120px;
+  max-width: 200px;
+  padding: 10px 14px;
+  border: 1.5px solid var(--border);
+  border-radius: 12px;
+  background: var(--white);
+  text-align: left;
+  cursor: pointer;
+  font-family: inherit;
+}
+
+.itinerary-tab.is-active {
+  border-color: var(--orange);
+  background: #fff8f2;
+  box-shadow: 0 2px 8px rgba(232, 93, 4, 0.12);
+}
+
+.itinerary-tab__name {
+  font-weight: 600;
+  font-size: 0.88rem;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  max-width: 100%;
+}
+
+.itinerary-tab__count {
+  font-size: 0.72rem;
+  color: var(--text-muted);
 }
 
 .itinerary-list {
@@ -406,10 +604,19 @@ button {
 }
 
 .itinerary-detail-panel {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
   padding: 14px;
   border-radius: 14px;
   border: 1.5px solid var(--border);
   background: var(--white);
+}
+
+.itinerary-detail-panel .itinerary-detail-head {
+  flex-shrink: 0;
 }
 
 .itinerary-detail-head {
@@ -445,10 +652,10 @@ button {
 .itinerary-detail-event {
   display: flex;
   align-items: flex-start;
-  justify-content: space-between;
   gap: 10px;
   padding-bottom: 10px;
-  border-bottom: 1px solid #f0ebe6;
+  border-bottom: 1px solid #19140f;
+  justify-content: space-between;
 }
 
 .itinerary-detail-event:last-child {
@@ -466,6 +673,11 @@ button {
   display: block;
   font-size: 0.78rem;
   color: var(--text-muted);
+}
+
+.itinerary-detail-event-source {
+  font-weight: 600;
+  color: var(--orange);
 }
 
 .itinerary-detail-remove {
@@ -779,6 +991,14 @@ button {
   font-size: 0.8rem;
   color: var(--text-muted);
   line-height: 1.35;
+}
+
+.event-card-source {
+  font-size: 0.75rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+  color: var(--orange);
 }
 
 .event-card-link {
@@ -1327,6 +1547,52 @@ button {
 .btn-cancel:active,
 .btn-cancel:focus-visible {
   border-color: var(--orange);
+}
+
+.confirm-modal {
+  max-height: none;
+}
+
+.confirm-modal__title {
+  margin: 0 0 10px;
+  font-size: 1.1rem;
+  font-weight: 700;
+  color: var(--text);
+}
+
+.confirm-modal__message {
+  margin: 0 0 20px;
+  font-size: 0.92rem;
+  color: var(--text-muted);
+  line-height: 1.45;
+}
+
+.confirm-modal__actions {
+  flex-direction: column-reverse;
+  gap: 10px;
+}
+
+.btn-confirm-danger {
+  width: 100%;
+  padding: 14px;
+  border: none;
+  border-radius: var(--radius-pill);
+  background: #c0392b;
+  color: var(--white);
+  font-size: 1rem;
+  font-weight: 700;
+  font-family: inherit;
+  cursor: pointer;
+}
+
+.btn-confirm-danger:disabled {
+  opacity: 0.65;
+  cursor: not-allowed;
+}
+
+.btn-confirm-danger:hover:not(:disabled),
+.btn-confirm-danger:focus-visible:not(:disabled) {
+  background: #a93226;
 }
 
 .date-field {

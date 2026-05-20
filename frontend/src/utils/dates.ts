@@ -34,8 +34,14 @@ export function toIsoDate(d: Date): string {
   return `${y}-${m}-${day}`
 }
 
+/** Parse YYYY-MM-DD as noon local time (avoids UTC midnight off-by-one in displays). */
+export function parseIsoDateLocal(iso: string): Date {
+  const [y, m, d] = iso.slice(0, 10).split('-').map(Number)
+  return new Date(y, m - 1, d, 12, 0, 0, 0)
+}
+
 function noonLocal(iso: string): Date {
-  return new Date(iso + 'T12:00:00')
+  return parseIsoDateLocal(iso)
 }
 
 export function addDaysToIsoDate(iso: string, deltaDays: number): string {
@@ -60,7 +66,7 @@ export function minIsoDate(a: string, b: string): string {
 
 export function formatFilterDate(iso: string | null): string {
   if (!iso) return 'Date'
-  const d = new Date(iso + 'T12:00:00')
+  const d = parseIsoDateLocal(iso)
   return d.toLocaleDateString('en-US', {
     month: 'short',
     day: 'numeric',

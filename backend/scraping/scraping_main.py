@@ -11,6 +11,9 @@ import os
 import httpx
 from dotenv import load_dotenv
 
+from scraping.config import SCRAPE_DAYS_AHEAD
+from scraping.scrape_utils import event_in_scrape_horizon
+
 
 load_dotenv()
 
@@ -68,7 +71,7 @@ async def scrape_events_from_warfield() -> List[dict]:
     events = []
     venue = "The Warfield, San Francisco, CA"
     location = "982 Market St, San Francisco, CA 94102"
-    
+
     # Geocode the venue location once
     # lat_lng = geocode_location(location)
     latitude = None
@@ -150,7 +153,7 @@ async def scrape_events_from_funcheap(max_pages: int = 5) -> List[dict]:
                 end_dt = meta_el.get("data-event-date-end") if meta_el else None
                 event_url = link_el["href"] if link_el else None
 
-                if title:
+                if title and event_in_scrape_horizon(start_dt or end_dt):
                     events.append(
                         {
                             "title": title,
@@ -190,7 +193,7 @@ async def scrape_events_from_funcheap(max_pages: int = 5) -> List[dict]:
     return events
 
 
-def generate_dothebay_urls(days_ahead: int = 10) -> List[str]:
+def generate_dothebay_urls(days_ahead: int = SCRAPE_DAYS_AHEAD) -> List[str]:
     base_url = "https://www.dothebay.com/events"
     today = date.today()
 
@@ -204,8 +207,11 @@ def generate_dothebay_urls(days_ahead: int = 10) -> List[str]:
 
 
 async def scrape_events_from_dothebay() -> List[dict]:
-    urls = generate_dothebay_urls(10)
-    print(f"🕷️ Starting DoTheBay scrape across {len(urls)} daily pages")
+    urls = generate_dothebay_urls()
+    print(
+        f"🕷️ Starting DoTheBay scrape across {len(urls)} daily pages "
+        f"({SCRAPE_DAYS_AHEAD}d window)"
+    )
     events = []
 
     for url in urls:
@@ -267,17 +273,14 @@ async def scrape_events_from_dothebay() -> List[dict]:
                         category = cls.replace("ds-event-category-", "")
                         break
 
-                if title:
-                    # Geocode the location for this event in the future
-                    latitude = None
-                    longitude = None
+                if title and event_in_scrape_horizon(datetime_str):
                     events.append(
                         {
                             "title": title,
                             "datetime": datetime_str,
                             "venue": venue,
                             "location": location,
-                            "latlong": f"{latitude},{longitude}" if latitude and longitude else None,
+                            "latlong": None,
                             "url": event_url,
                             "categories": [category] if category else None,
                             "source": "dothebay.com",

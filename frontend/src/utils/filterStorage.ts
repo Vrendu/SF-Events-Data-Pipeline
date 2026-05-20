@@ -1,7 +1,7 @@
 import type { EventCategory, EventFilters } from '../types/event'
 import { EVENT_CATEGORIES } from '../types/event'
 import type { TimeOfDay } from './dates'
-import { defaultEventFilters } from './dates'
+import { defaultEventFilters, toIsoDate } from './dates'
 
 const STORAGE_KEY = 'plotted-event-filters'
 
@@ -40,7 +40,17 @@ function parseStored(raw: string): EventFilters {
     timeOfDay = rec.timeOfDay as TimeOfDay
   }
 
-  return { categories, onDate, timeOfDay }
+  return normalizeOnDate({ categories, onDate, timeOfDay })
+}
+
+/** Past dates in storage were usually stale "today" defaults — bump to current day. */
+function normalizeOnDate(filters: EventFilters): EventFilters {
+  if (filters.onDate == null) return filters
+  const today = toIsoDate(new Date())
+  if (filters.onDate < today) {
+    return { ...filters, onDate: today }
+  }
+  return filters
 }
 
 /** Hydrate filters from localStorage, or defaults if missing / invalid */

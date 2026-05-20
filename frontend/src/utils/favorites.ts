@@ -11,12 +11,26 @@ export function getFavoriteIds(): Set<number> {
   }
 }
 
-export function toggleFavorite(id: number): Set<number> {
+export function setFavoriteIds(ids: Set<number>): void {
+  if (typeof localStorage === 'undefined') return
+  try {
+    localStorage.setItem(STORAGE_KEY, JSON.stringify([...ids]))
+  } catch {
+    /* ignore */
+  }
+}
+
+export function toggleFavoriteLocal(id: number): Set<number> {
   const ids = getFavoriteIds()
   if (ids.has(id)) ids.delete(id)
   else ids.add(id)
-  localStorage.setItem(STORAGE_KEY, JSON.stringify([...ids]))
+  setFavoriteIds(ids)
   return ids
+}
+
+/** @deprecated Use toggleFavoriteLocal or useFavorites().toggle */
+export function toggleFavorite(id: number): Set<number> {
+  return toggleFavoriteLocal(id)
 }
 
 export function clearFavorites(): void {

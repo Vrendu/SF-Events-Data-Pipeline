@@ -2,6 +2,7 @@ import type { MouseEvent } from 'react'
 import { CalendarPlus, ExternalLink, Heart } from 'lucide-react'
 import type { Event } from '../types/event'
 import { formatEventDate, formatEventTime } from '../utils/dates'
+import { formatEventSource } from '../utils/source'
 
 interface EventCardProps {
   event: Event
@@ -24,6 +25,7 @@ export function EventCard({
 }: EventCardProps) {
   const location = event.venue || event.location || 'Location TBA'
   const eventUrl = event.url?.trim()
+  const sourceLabel = formatEventSource(event.source)
 
   const stopCardClick = (e: MouseEvent) => {
     e.stopPropagation()
@@ -67,6 +69,7 @@ export function EventCard({
           <p className="event-card-meta event-card-meta--inline">
             {formatEventDate(event.datetime)}
             {event.datetime ? ` · ${formatEventTime(event.datetime)}` : ''}
+            {sourceLabel && ` · ${sourceLabel}`}
             {eventUrl && (
               <>
                 {' · '}
@@ -88,6 +91,7 @@ export function EventCard({
             <p className="event-card-meta">{formatEventDate(event.datetime)}</p>
             {event.datetime && <p className="event-card-meta">{formatEventTime(event.datetime)}</p>}
             <p className="event-card-meta">{location}</p>
+            {sourceLabel && <p className="event-card-meta event-card-source">{sourceLabel}</p>}
             {eventUrl && (
               <a
                 href={eventUrl}
