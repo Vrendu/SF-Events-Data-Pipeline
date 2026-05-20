@@ -51,6 +51,23 @@ def _cookie_secure() -> bool:
     return os.getenv("AUTH_COOKIE_SECURE", "").lower() in ("1", "true", "yes")
 
 
+def _cookie_samesite() -> str:
+    explicit = os.getenv("AUTH_COOKIE_SAMESITE", "").strip().lower()
+    if explicit in ("lax", "strict", "none"):
+        return explicit
+    # Cross-origin frontend + API (e.g. two Render services) needs SameSite=None + Secure.
+    return "none" if _cookie_secure() else "lax"
+
+
+def _cookie_common() -> dict:
+    return {
+        "httponly": True,
+        "secure": _cookie_secure(),
+        "samesite": _cookie_samesite(),
+        "path": "/",
+    }
+
+
 def _hash_refresh_token(raw: str) -> str:
     return hashlib.sha256(raw.encode("utf-8")).hexdigest()
 
@@ -150,13 +167,7 @@ def _decode_access_token(token: str) -> dict[str, Any]:
 
 
 def _set_auth_cookies(response: Response, access_token: str, refresh_raw: str) -> None:
-    secure = _cookie_secure()
-    common = {
-        "httponly": True,
-        "secure": secure,
-        "samesite": "lax",
-        "path": "/",
-    }
+    common = _cookie_common()
     response.set_cookie(
         ACCESS_COOKIE,
         access_token,
@@ -172,8 +183,7 @@ def _set_auth_cookies(response: Response, access_token: str, refresh_raw: str) -
 
 
 def _clear_auth_cookies(response: Response) -> None:
-    secure = _cookie_secure()
-    common = {"httponly": True, "secure": secure, "samesite": "lax", "path": "/"}
+    common = _cookie_common()
     response.delete_cookie(ACCESS_COOKIE, **common)
     response.delete_cookie(REFRESH_COOKIE, **common)
 

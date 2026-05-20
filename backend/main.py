@@ -142,16 +142,24 @@ async def geocode_location(location: str) -> Optional[str]:
 
 app = FastAPI(title="Events Scraper API", version="1.0.0")
 
-_cors_origins = os.getenv(
-    "CORS_ORIGINS",
-    "http://localhost:5173,http://127.0.0.1:5173",
-).split(",")
+_cors_origins = [
+    o.strip()
+    for o in os.getenv(
+        "CORS_ORIGINS",
+        "http://localhost:5173,http://127.0.0.1:5173",
+    ).split(",")
+    if o.strip()
+]
+# Render frontends use *.onrender.com; set CORS_ORIGINS to override or extend.
+_cors_origin_regex = os.getenv("CORS_ORIGIN_REGEX", r"https://.*\.onrender\.com")
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=[o.strip() for o in _cors_origins if o.strip()],
+    allow_origins=_cors_origins,
+    allow_origin_regex=_cors_origin_regex or None,
     allow_credentials=True,
     allow_methods=["*"],
-    allow_headers=["*"],
+    allow_headers=["Content-Type", "X-API-Key", "Accept", "Authorization"],
+    expose_headers=["*"],
 )
 
 
