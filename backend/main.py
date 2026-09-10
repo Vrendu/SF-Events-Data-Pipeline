@@ -6,7 +6,6 @@ from typing import Any, List, Literal, Optional
 from datetime import datetime, timedelta
 
 import asyncpg
-from data_from_apis.categories import determine_categories
 import httpx
 from dotenv import load_dotenv
 from fastapi import Depends, FastAPI, HTTPException, Query, Security
@@ -625,13 +624,9 @@ async def populate_database(events: List[dict]):
                 elif event.get("latlong"):
                     geocode_skipped_count += 1
 
-                categories = determine_categories(
-                    event.get("title"),
-                    event.get("description"),
-                    event.get("venue"),
-                    event.get("categories"),
-                )
-                categories = [category.lower() for category in categories]
+                categories = [
+                    category.lower() for category in event.get("categories") or []
+                ]
                 event_id, was_inserted = await _upsert_event_row(
                     conn, event, categories, _parse_event_id(event)
                 )
