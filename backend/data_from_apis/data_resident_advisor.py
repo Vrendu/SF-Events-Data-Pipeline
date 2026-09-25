@@ -35,8 +35,13 @@ async def scrape_from_resident_advisor() -> List[dict]:
                     date
                     startTime
                     contentUrl
+                    images {
+                      filename
+                      alt
+                      type
+                    }
                     genres {
-                        name
+                      name
                     }
                     venue {
                       name
@@ -61,7 +66,7 @@ async def scrape_from_resident_advisor() -> List[dict]:
             },
         }
 
-        response = requests.post(url, json=payload, headers=headers)
+        response = requests.post(url, json=payload, headers=headers, timeout=20)
 
         if not response.text:
             raise ValueError("Empty response from RA")
@@ -82,28 +87,40 @@ async def scrape_from_resident_advisor() -> List[dict]:
 
     print(f"✅ Scraped {len(all_listings)} events from Resident Advisor")
 
+    return [_to_event(l["event"]) for l in all_listings]
+
+
+def _extract_images(event: dict) -> List[dict]:
+    """Return images in the same [{url, ...}] shape as other sources, front flyer first."""
+    images = event.get("images") or []
+    sorted_images = sorted(images, key=lambda img: img.get("type") != "FLYERFRONT")
     return [
-        {
-            "title": l["event"]["title"],
-            "datetime": l["event"].get("startTime") or l["event"].get("date"),
-            "venue": l["event"]["venue"]["name"] if l["event"].get("venue") else None,
-            "location": (
-                l["event"]["venue"].get("address") if l["event"].get("venue") else None
-            ),
-            "latlong": (
-                f"{l['event']['venue']['location']['latitude']},{l['event']['venue']['location']['longitude']}"
-                if l["event"].get("venue") and l["event"]["venue"].get("location")
-                else None
-            ),
-            "url": (
-                f"https://ra.co{l['event']['contentUrl']}"
-                if l["event"].get("contentUrl")
-                else None
-            ),
-            "description": None,
-            "categories": ["Nightlife", "Music", "Concerts", "Live Music"]
-            + [g["name"] for g in l["event"].get("genres") or []],
-            "source": "resident_advisor",
-        }
-        for l in all_listings
+        {"url": img["filename"], "type": img.get("type"), "alt": img.get("alt")}
+        for img in sorted_images
+        if img.get("filename")
     ]
+
+
+def _to_event(event: dict) -> dict:
+    venue = event.get("venue") or {}
+    location = venue.get("location") or {}
+
+    latlong = None
+    if location.get("latitude") is not None and location.get("longitude") is not None:
+        latlong = f"{location['latitude']},{location['longitude']}"
+
+    return {
+        "title": event["title"],
+        "datetime": event.get("startTime") or event.get("date"),
+        "venue": venue.get("name"),
+        "location": venue.get("address"),
+        "latlong": latlong,
+        "url": (
+            f"https://ra.co{event['contentUrl']}" if event.get("contentUrl") else None
+        ),
+        "description": None,
+        "images": _extract_images(event),
+        "categories": ["Nightlife", "Music", "Concerts", "Live Music"]
+        + [g["name"] for g in event.get("genres") or []],
+        "source": "resident_advisor",
+    }
