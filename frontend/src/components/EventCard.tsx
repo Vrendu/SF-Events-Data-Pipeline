@@ -2,6 +2,7 @@ import type { MouseEvent } from 'react'
 import { CalendarPlus, ExternalLink, Heart } from 'lucide-react'
 import type { Event } from '../types/event'
 import { formatEventDate, formatEventTime } from '../utils/dates'
+import { pickThumbnailImage } from '../utils/eventImage'
 import { formatEventSource } from '../utils/source'
 
 interface EventCardProps {
@@ -28,6 +29,7 @@ export function EventCard({
   const location = event.venue || event.location || 'Location TBA'
   const eventUrl = event.url?.trim()
   const sourceLabel = formatEventSource(event.source)
+  const thumbImage = pickThumbnailImage(event.images)
 
   const stopCardClick = (e: MouseEvent) => {
     e.stopPropagation()
@@ -50,7 +52,11 @@ export function EventCard({
       role={onSelect ? 'button' : undefined}
       tabIndex={onSelect ? 0 : undefined}
     >
-      <div className="event-card-thumb" aria-hidden />
+      <div
+        className="event-card-thumb"
+        aria-hidden
+        style={thumbImage ? { backgroundImage: `url(${thumbImage.url})` } : undefined}
+      />
       <div className="event-card-body">
         <h3 className="event-card-title">
           {eventUrl ? (

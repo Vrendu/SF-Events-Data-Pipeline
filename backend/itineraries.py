@@ -13,23 +13,18 @@ from auth import UserOut
 
 
 def _event_row_to_dict(row: Any) -> dict:
-    categories = row.get("categories")
-    category = categories[0] if categories else None
-    datetime_value = row.get("datetime")
     return {
         "id": row.get("id"),
         "title": row.get("title"),
-        "name": row.get("title"),
-        "datetime": datetime_value,
-        "date": datetime_value,
+        "datetime": row.get("datetime"),
         "venue": row.get("venue"),
         "location": row.get("location"),
         "latlong": row.get("latlong"),
         "url": row.get("url"),
         "description": row.get("description"),
-        "categories": categories,
-        "category": category,
+        "categories": row.get("categories"),
         "source": row.get("source"),
+        "images": row.get("images"),
     }
 
 
@@ -89,7 +84,7 @@ async def _build_itinerary_detail(
         """
         SELECT
             e.id, e.title, e.datetime, e.venue, e.location, e.latlong,
-            e.url, e.description, e.categories, e.source
+            e.url, e.description, e.categories, e.source, e.images
         FROM itinerary_events ie
         JOIN events e ON e.id = ie.event_id
         WHERE ie.itinerary_id = $1

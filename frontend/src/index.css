@@ -953,6 +953,8 @@ button {
   height: 76px;
   border-radius: 14px;
   background: var(--thumb);
+  background-size: cover;
+  background-position: center;
   flex-shrink: 0;
 }
 

@@ -1,4 +1,5 @@
 import asyncio
+import json
 import os
 import re
 from contextlib import asynccontextmanager
@@ -71,6 +72,16 @@ def _get_connect_kwargs() -> dict:
     return {}
 
 
+async def _init_read_connection(conn: asyncpg.Connection) -> None:
+    """
+    Have asyncpg decode/encode `jsonb` (e.g. `events.images`) to/from plain
+    Python objects automatically, so callers never see raw JSON text.
+    """
+    await conn.set_type_codec(
+        "jsonb", schema="pg_catalog", encoder=json.dumps, decoder=json.loads
+    )
+
+
 @asynccontextmanager
 async def db_connection():
     """
@@ -89,6 +100,7 @@ async def db_connection():
 
     conn = await asyncpg.connect(DATABASE_URL, **_get_connect_kwargs())
     try:
+        await _init_read_connection(conn)
         yield conn
     finally:
         await conn.close()
@@ -168,6 +180,10 @@ class ScrapeRequest(BaseModel):
 
 
 class Event(BaseModel):
+    """Canonical event shape — used everywhere an event crosses the API boundary."""
+
+    # Optional: `/scrape_events_funcheap` returns events before they're written
+    # to (and assigned an id by) the DB. Every other endpoint always sets it.
     id: Optional[int] = None
     title: str
     datetime: Optional[str] = None
@@ -178,30 +194,7 @@ class Event(BaseModel):
     description: Optional[str] = None
     categories: Optional[List[str]] = None
     source: Optional[str] = None
-
-
-class EventOut(BaseModel):
-    """
-    Response shape tailored for the existing frontend components.
-
-    The DB uses `datetime` and `categories`, but the UI expects:
-    - `date` (string) and `category` (string)
-    - `name` as a fallback for `title`
-    """
-
-    id: int
-    title: str
-    name: Optional[str] = None
-    datetime: Optional[str] = None
-    date: Optional[str] = None
-    venue: Optional[str] = None
-    location: Optional[str] = None
-    latlong: Optional[str] = None
-    url: Optional[str] = None
-    description: Optional[str] = None
-    categories: Optional[List[str]] = None
-    category: Optional[str] = None
-    source: Optional[str] = None
+    images: Optional[List[dict]] = None
 
 
 _ISO_DATE_RE = re.compile(r"^\d{4}-\d{2}-\d{2}$")
@@ -217,25 +210,18 @@ def _validate_iso_date(value: str, param_name: str) -> str:
 
 
 def _event_row_to_out(row: Any) -> dict:
-    categories = row.get("categories")
-    category = categories[0] if categories else None
-    datetime_value = row.get("datetime")
-
-    # Frontend expects `name`, `date`, and `category`.
     return {
         "id": row.get("id"),
         "title": row.get("title"),
-        "name": row.get("title"),
-        "datetime": datetime_value,
-        "date": datetime_value,
+        "datetime": row.get("datetime"),
         "venue": row.get("venue"),
         "location": row.get("location"),
         "latlong": row.get("latlong"),
         "url": row.get("url"),
         "description": row.get("description"),
-        "categories": categories,
-        "category": category,
+        "categories": row.get("categories"),
         "source": row.get("source"),
+        "images": row.get("images"),
     }
 
 
@@ -274,18 +260,30 @@ async def init_db():
                 url TEXT,
                 description TEXT,
                 categories TEXT[],
-                source TEXT             
+                source TEXT
             )
             """)
 
         await conn.execute("""
-            DO $$ 
-            BEGIN 
+            DO $$
+            BEGIN
                 IF NOT EXISTS (
-                    SELECT 1 FROM information_schema.columns 
+                    SELECT 1 FROM information_schema.columns
                     WHERE table_name='events' AND column_name='datetime'
                 ) THEN
                     ALTER TABLE events ADD COLUMN datetime TEXT;
+                END IF;
+            END $$;
+            """)
+
+        await conn.execute("""
+            DO $$
+            BEGIN
+                IF NOT EXISTS (
+                    SELECT 1 FROM information_schema.columns
+                    WHERE table_name='events' AND column_name='images'
+                ) THEN
+                    ALTER TABLE events ADD COLUMN images JSONB;
                 END IF;
             END $$;
             """)
@@ -377,7 +375,11 @@ async def startup_event():
     await init_db()
     global db_pool
     db_pool = await asyncpg.create_pool(
-        DATABASE_URL, min_size=1, max_size=10, **_get_connect_kwargs()
+        DATABASE_URL,
+        min_size=1,
+        max_size=10,
+        init=_init_read_connection,
+        **_get_connect_kwargs(),
     )
 
 
@@ -487,6 +489,8 @@ async def _upsert_event_row(
     latlong = _optional_text(event.get("latlong"))
     url = _optional_text(event.get("url"))
     description = _optional_text(event.get("description"))
+    images = event.get("images") or None
+    images_json = json.dumps(images) if images else None
 
     existing_id = await _find_existing_event_id(conn, title, venue, source)
 
@@ -500,7 +504,12 @@ async def _upsert_event_row(
                 latlong = COALESCE(events.latlong, $4),
                 url = COALESCE($5, url),
                 description = COALESCE($6, description),
-                categories = $7 || events.categories
+                categories = ARRAY(
+                    SELECT DISTINCT unnest(
+                        COALESCE(events.categories, '{}'::text[]) || COALESCE($7::text[], '{}'::text[])
+                    )
+                ),
+                images = COALESCE($8::jsonb, events.images)
             WHERE id = $1
             RETURNING id
             """,
@@ -511,6 +520,7 @@ async def _upsert_event_row(
             url,
             description,
             categories,
+            images_json,
         )
         if row is None:
             raise RuntimeError(f"Failed to update event id={existing_id}")
@@ -520,11 +530,11 @@ async def _upsert_event_row(
         """
         INSERT INTO events (
             id, title, datetime, venue, location, latlong,
-            url, description, categories, source
+            url, description, categories, source, images
         )
         VALUES (
             COALESCE($1::int, nextval(pg_get_serial_sequence('events', 'id'))::int),
-            $2, $3, $4, $5, $6, $7, $8, $9, $10
+            $2, $3, $4, $5, $6, $7, $8, $9, $10, $11::jsonb
         )
         RETURNING id
         """,
@@ -538,6 +548,7 @@ async def _upsert_event_row(
         description,
         categories,
         source,
+        images_json,
     )
     if row is None:
         raise RuntimeError("Failed to insert event")
@@ -624,9 +635,10 @@ async def populate_database(events: List[dict]):
                 elif event.get("latlong"):
                     geocode_skipped_count += 1
 
-                categories = [
+                # dict.fromkeys dedupes while preserving first-seen order.
+                categories = list(dict.fromkeys(
                     category.lower() for category in event.get("categories") or []
-                ]
+                ))
                 event_id, was_inserted = await _upsert_event_row(
                     conn, event, categories, _parse_event_id(event)
                 )
@@ -764,7 +776,7 @@ async def prune_old_events():
 
 @app.get(
     "/events",
-    response_model=List[EventOut],
+    response_model=List[Event],
     dependencies=[Depends(verify_read_key)],
 )
 async def list_events(
@@ -781,13 +793,17 @@ async def list_events(
     venue: Optional[str] = Query(
         default=None, description="Filter by venue (case-insensitive substring)"
     ),
+    cities: Optional[str] = Query(
+        default=None,
+        description="Comma-separated city names — matches events whose location contains any of them (case-insensitive)",
+    ),
     start_date: Optional[str] = Query(
         default=None, description="Filter start (YYYY-MM-DD)"
     ),
     end_date: Optional[str] = Query(
         default=None, description="Filter end (YYYY-MM-DD)"
     ),
-    limit: int = Query(default=100, ge=1, le=1000, description="Max events to return"),
+    limit: int = Query(default=100, ge=1, le=20000, description="Max events to return"),
     offset: int = Query(default=0, ge=0, description="Pagination offset"),
     sort: str = Query(
         default="datetime_desc",
@@ -853,6 +869,16 @@ async def list_events(
     if category is not None:
         add_arg("{param} = ANY(categories)", category)
 
+    if cities is not None:
+        city_names = [c.strip() for c in cities.split(",") if c.strip()]
+        if city_names:
+            city_clauses = []
+            for city_name in city_names:
+                param_idx = len(args) + 1
+                city_clauses.append(f"location ILIKE ${param_idx}")
+                args.append(f"%{city_name}%")
+            where_clauses.append("(" + " OR ".join(city_clauses) + ")")
+
     where_sql = " AND ".join(where_clauses) if where_clauses else "TRUE"
     order_by_sql = allowed_sorts[sort]
 
@@ -866,7 +892,8 @@ async def list_events(
         url,
         description,
         categories,
-        source
+        source,
+        images
     """
 
     base_from = f"FROM events WHERE {where_sql}"
@@ -890,7 +917,7 @@ async def list_events(
 
 @app.get(
     "/api/events",
-    response_model=List[EventOut],
+    response_model=List[Event],
     include_in_schema=False,
     dependencies=[Depends(verify_read_key)],
 )
@@ -908,13 +935,17 @@ async def list_events_api(
     venue: Optional[str] = Query(
         default=None, description="Filter by venue (case-insensitive substring)"
     ),
+    cities: Optional[str] = Query(
+        default=None,
+        description="Comma-separated city names — matches events whose location contains any of them (case-insensitive)",
+    ),
     start_date: Optional[str] = Query(
         default=None, description="Filter start (YYYY-MM-DD)"
     ),
     end_date: Optional[str] = Query(
         default=None, description="Filter end (YYYY-MM-DD)"
     ),
-    limit: int = Query(default=100, ge=1, le=1000, description="Max events to return"),
+    limit: int = Query(default=100, ge=1, le=20000, description="Max events to return"),
     offset: int = Query(default=0, ge=0, description="Pagination offset"),
     sort: str = Query(
         default="datetime_desc",
@@ -927,6 +958,7 @@ async def list_events_api(
         keyword=keyword,
         category=category,
         venue=venue,
+        cities=cities,
         start_date=start_date,
         end_date=end_date,
         limit=limit,
@@ -937,7 +969,7 @@ async def list_events_api(
 
 @app.get(
     "/events/{event_id}",
-    response_model=EventOut,
+    response_model=Event,
     dependencies=[Depends(verify_read_key)],
 )
 async def get_event(event_id: int):
@@ -945,7 +977,7 @@ async def get_event(event_id: int):
         row = await conn.fetchrow(
             """
             SELECT
-                id, title, datetime, venue, location, latlong, url, description, categories, source
+                id, title, datetime, venue, location, latlong, url, description, categories, source, images
             FROM events
             WHERE id = $1
             """,
@@ -960,7 +992,7 @@ async def get_event(event_id: int):
 
 @app.get(
     "/api/events/{event_id}",
-    response_model=EventOut,
+    response_model=Event,
     include_in_schema=False,
     dependencies=[Depends(verify_read_key)],
 )

@@ -1,12 +1,13 @@
 import type { Event } from '../types/event'
 
-const STORAGE_KEY = 'plotted-events-cache'
+// v2: scoped to SF/Oakland/Alameda/Berkeley only — bumped so any older cache
+// holding events from every city isn't mistaken for the new, narrower one.
+const STORAGE_KEY = 'plotted-events-cache-v2'
 
 export interface StoredEventsCache {
   events: Event[]
-  loadedStart: string
-  loadedEnd: string
-  savedAt: string
+  /** Calendar day (YYYY-MM-DD) every event was fetched on. */
+  fetchedOn: string
 }
 
 function isIsoDate(s: string): boolean {
@@ -19,11 +20,7 @@ export function readEventsCache(): StoredEventsCache | null {
     const raw = localStorage.getItem(STORAGE_KEY)
     if (!raw) return null
     const parsed = JSON.parse(raw) as StoredEventsCache
-    if (
-      !Array.isArray(parsed.events) ||
-      !isIsoDate(parsed.loadedStart) ||
-      !isIsoDate(parsed.loadedEnd)
-    ) {
+    if (!Array.isArray(parsed.events) || !isIsoDate(parsed.fetchedOn)) {
       return null
     }
     return parsed

@@ -8,6 +8,8 @@ export interface FetchEventsParams {
   startDate?: string
   endDate?: string
   category?: string
+  /** Comma-separated city names — matches events whose location contains any of them */
+  cities?: string
   limit?: number
   sort?: string
 }
@@ -18,6 +20,7 @@ export async function fetchEvents(params: FetchEventsParams = {}): Promise<Event
   if (params.startDate) search.set('start_date', params.startDate)
   if (params.endDate) search.set('end_date', params.endDate)
   if (params.category) search.set('category', params.category)
+  if (params.cities) search.set('cities', params.cities)
   search.set('limit', String(params.limit ?? 500))
   search.set('sort', params.sort ?? 'datetime_asc')
 

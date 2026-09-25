@@ -40,30 +40,6 @@ export function parseIsoDateLocal(iso: string): Date {
   return new Date(y, m - 1, d, 12, 0, 0, 0)
 }
 
-function noonLocal(iso: string): Date {
-  return parseIsoDateLocal(iso)
-}
-
-export function addDaysToIsoDate(iso: string, deltaDays: number): string {
-  const d = noonLocal(iso)
-  d.setDate(d.getDate() + deltaDays)
-  return toIsoDate(d)
-}
-
-export function addMonthsToIsoDate(iso: string, months: number): string {
-  const d = noonLocal(iso)
-  d.setMonth(d.getMonth() + months)
-  return toIsoDate(d)
-}
-
-export function maxIsoDate(a: string, b: string): string {
-  return a >= b ? a : b
-}
-
-export function minIsoDate(a: string, b: string): string {
-  return a <= b ? a : b
-}
-
 export function formatFilterDate(iso: string | null): string {
   if (!iso) return 'Date'
   const d = parseIsoDateLocal(iso)
@@ -108,6 +84,15 @@ export function defaultEventFilters(): EventFilters {
   return {
     categories: [],
     onDate: toIsoDate(new Date()),
+    timeOfDay: 'all',
+  }
+}
+
+/** True "no filters" state — unlike `defaultEventFilters`, doesn't pin a date. */
+export function clearedEventFilters(): EventFilters {
+  return {
+    categories: [],
+    onDate: null,
     timeOfDay: 'all',
   }
 }

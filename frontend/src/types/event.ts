@@ -1,17 +1,24 @@
+export interface EventImage {
+  url: string
+  ratio?: string
+  width?: number
+  height?: number
+  fallback?: boolean
+}
+
+/** Mirrors the backend's `Event` model exactly — one shape, on both ends. */
 export interface Event {
   id: number
   title: string
-  name?: string
   datetime?: string
-  date?: string
   venue?: string
   location?: string
   latlong?: string
   url?: string
   description?: string
   categories?: string[]
-  category?: string
   source?: string
+  images?: EventImage[]
 }
 
 export type EventCategory =

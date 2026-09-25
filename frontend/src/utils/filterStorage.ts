@@ -40,14 +40,22 @@ function parseStored(raw: string): EventFilters {
     timeOfDay = rec.timeOfDay as TimeOfDay
   }
 
-  return normalizeOnDate({ categories, onDate, timeOfDay })
+  const savedAt = typeof rec.savedAt === 'string' && isIsoDate(rec.savedAt) ? rec.savedAt : null
+
+  return normalizeOnDate({ categories, onDate, timeOfDay }, savedAt)
 }
 
-/** Past dates in storage were usually stale "today" defaults — bump to current day. */
-function normalizeOnDate(filters: EventFilters): EventFilters {
+/**
+ * A stored `onDate` only reflects the user's intent for the day it was saved
+ * on — an explicit "browse next Friday" pick they're still looking at today,
+ * say. Once a new calendar day rolls around (or we can't tell when it was
+ * saved, e.g. storage from before `savedAt` existed) it's a stale leftover
+ * — whether it lands in the past or the future — so snap back to today.
+ */
+function normalizeOnDate(filters: EventFilters, savedAt: string | null): EventFilters {
   if (filters.onDate == null) return filters
   const today = toIsoDate(new Date())
-  if (filters.onDate < today) {
+  if (savedAt !== today) {
     return { ...filters, onDate: today }
   }
   return filters
@@ -68,7 +76,8 @@ export function readStoredFilters(): EventFilters {
 export function writeStoredFilters(filters: EventFilters): void {
   if (typeof localStorage === 'undefined') return
   try {
-    localStorage.setItem(STORAGE_KEY, JSON.stringify(filters))
+    const savedAt = toIsoDate(new Date())
+    localStorage.setItem(STORAGE_KEY, JSON.stringify({ ...filters, savedAt }))
   } catch {
     /* quota / private mode */
   }

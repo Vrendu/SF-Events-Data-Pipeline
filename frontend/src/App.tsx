@@ -21,7 +21,7 @@ import type { EventFilters } from './types/event'
 import { clearItinerariesCache, readItinerariesCache } from './utils/itineraryStorage'
 import { readStoredFilters, writeStoredFilters } from './utils/filterStorage'
 import type { TimeOfDay } from './utils/dates'
-import { defaultEventFilters } from './utils/dates'
+import { clearedEventFilters } from './utils/dates'
 import { parseLatLong } from './utils/geo'
 
 type AppView = 'map' | 'login' | 'signup' | 'dashboard'
@@ -60,7 +60,7 @@ export default function App() {
   }, [events])
 
   const clearFilters = useCallback(() => {
-    const next = defaultEventFilters()
+    const next = clearedEventFilters()
     setFilters(next)
     setAppliedFilters(next)
   }, [])

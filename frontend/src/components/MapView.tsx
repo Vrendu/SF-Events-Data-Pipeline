@@ -4,7 +4,7 @@ import 'mapbox-gl/dist/mapbox-gl.css'
 import { getMapboxAccessToken } from '../config/env'
 import type { Event } from '../types/event'
 import { formatEventDate, formatEventTime } from '../utils/dates'
-import { parseLatLong } from '../utils/geo'
+import { MAP_BOUNDS, parseLatLong } from '../utils/geo'
 import { formatEventSource } from '../utils/source'
 
 /** Downtown San Francisco (lng, lat) — viewport is always anchored here unless the user picks another pin */
@@ -152,6 +152,8 @@ export function MapView({ events, selectedEventId, onSelectEvent, listExpanded }
         }}
         style={{ width: '100%', height: '100%' }}
         mapStyle="mapbox://styles/mapbox/light-v11"
+        maxBounds={MAP_BOUNDS}
+        minZoom={9}
         onLoad={onMapLoad}
       >
         {pins.map((p) => {

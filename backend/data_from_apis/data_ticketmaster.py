@@ -142,6 +142,13 @@ def normalize_ticketmaster_event(event: Dict[str, Any]) -> Dict[str, Any]:
 
     categories = event.get("classifications", [])
 
+    # Ticketmaster's event search response already embeds an `images` array
+    # per event (various crops/sizes) — no need to call the separate
+    # per-event /events/{id}/images endpoint.
+    images = event.get("images") or []
+    images = [img.get("url") for img in images if img.get("url")]
+
+
     normalized_event = {
         "title": event.get("name"),
         "datetime": date_str,
@@ -151,6 +158,7 @@ def normalize_ticketmaster_event(event: Dict[str, Any]) -> Dict[str, Any]:
         "url": event.get("url"),
         "description": event.get("info") or event.get("pleaseNote"),
         "categories": [category.get("segment", {}).get("name") for category in categories] if categories else [event.get("name")],
-        "source": "Ticketmaster"
+        "source": "Ticketmaster",
+        "images": images,
     }
     return normalized_event
