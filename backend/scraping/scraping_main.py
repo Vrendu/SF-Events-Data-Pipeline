@@ -96,6 +96,9 @@ async def scrape_events_from_warfield() -> List[dict]:
             else None
         )
 
+        img_el = event.select_one("div.thumb img")
+        image_url = img_el.get("src") if img_el else None
+
         # Create concatenated datetime string
         datetime_str = None
         if raw_date and raw_time:
@@ -111,10 +114,13 @@ async def scrape_events_from_warfield() -> List[dict]:
                 "datetime": parse_datetime_string(datetime_str),
                 "venue": venue,
                 "location": location,
-                "latlong": f"{latitude},{longitude}" if latitude and longitude else None,
+                "latlong": (
+                    f"{latitude},{longitude}" if latitude and longitude else None
+                ),
                 "url": url,
                 "categories": [],
                 "source": "thewarfieldtheatre.com",
+                "images": [{"url": image_url}] if image_url else [],
             }
         )
 

@@ -146,7 +146,7 @@ def normalize_ticketmaster_event(event: Dict[str, Any]) -> Dict[str, Any]:
     # per event (various crops/sizes) — no need to call the separate
     # per-event /events/{id}/images endpoint.
     images = event.get("images") or []
-    images = [img.get("url") for img in images if img.get("url")]
+    images = [{"url": img.get("url")} for img in images if img.get("url")]
 
 
     normalized_event = {
