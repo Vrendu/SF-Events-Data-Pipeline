@@ -268,6 +268,18 @@ async def scrape_events_from_dothebay() -> List[dict]:
                 # Extract category from the current event_card's classes
                 category = None
                 classes = event_card.get("class", [])
+
+                # Extract cover image URL from inline style: background-image:url('...')
+                image_url = None
+                cover_el = event_card.select_one("div.ds-cover-image")
+                if cover_el:
+                    style = cover_el.get("style", "")
+                    match = re.search(r"url\(\s*['\"]?(.*?)['\"]?\s*\)", style)
+                    if match:
+                        image_url = match.group(1)
+
+                images = [{"url": image_url}] if image_url else []
+
                 for cls in classes:
                     if cls.startswith("ds-event-category-"):
                         category = cls.replace("ds-event-category-", "")
@@ -284,6 +296,7 @@ async def scrape_events_from_dothebay() -> List[dict]:
                             "url": event_url,
                             "categories": [category] if category else None,
                             "source": "dothebay.com",
+                            "images": images
                         }
                     )
 
@@ -293,6 +306,3 @@ async def scrape_events_from_dothebay() -> List[dict]:
 
     print(f"✅ Scraped {len(events)} events from DoTheBay")
     return events
-
-
-
