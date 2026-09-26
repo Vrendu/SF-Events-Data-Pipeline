@@ -199,6 +199,64 @@ async def scrape_events_from_funcheap(max_pages: int = 5) -> List[dict]:
     return events
 
 
+_WEEKLY_EVENT_DAYS = {
+    "sun": "Sunday",
+    "mon": "Monday",
+    "tue": "Tuesday",
+    "wed": "Wednesday",
+    "thu": "Thursday",
+    "fri": "Friday",
+    "sat": "Saturday",
+}
+_WEEKLY_EVENT_URL_RE = re.compile(r"/events/weekly/(sun|mon|tue|wed|thu|fri|sat)/", re.IGNORECASE)
+_WEEKDAY_INDEX = {
+    "Monday": 0,
+    "Tuesday": 1,
+    "Wednesday": 2,
+    "Thursday": 3,
+    "Friday": 4,
+    "Saturday": 5,
+    "Sunday": 6,
+}
+
+
+def weekly_event_day(url: Optional[str]) -> Optional[str]:
+    """dothebay recurring-event URLs look like /events/weekly/sun/some-slug.
+
+    Mirrors frontend/src/utils/dates.ts's weeklyEventDay. Used to populate the
+    `recurrence` field (e.g. "Every Sunday") for display.
+    """
+    if not url:
+        return None
+    match = _WEEKLY_EVENT_URL_RE.search(url)
+    return _WEEKLY_EVENT_DAYS[match.group(1).lower()] if match else None
+
+
+def next_weekly_occurrence(day_name: str, time_hint: Optional[str], *, today: Optional[date] = None) -> str:
+    """Next upcoming date (today or later) for `day_name`, formatted like other
+    dothebay datetimes ("YYYY-MM-DD HH:MM").
+
+    dothebay's recurring-event cards carry a `startDate` meta that's stale (the
+    original listing date, not the next occurrence), so we ignore its date and
+    only borrow its time-of-day, recomputing the date ourselves each scrape.
+    """
+    today = today or date.today()
+    target_weekday = _WEEKDAY_INDEX[day_name]
+    days_ahead = (target_weekday - today.weekday()) % 7
+    next_date = today + timedelta(days=days_ahead)
+
+    # Extract just the time-of-day via regex rather than a full ISO parse:
+    # dothebay's offsets (e.g. "-0700") aren't colon-separated, which
+    # datetime.fromisoformat rejects on Python < 3.11.
+    hour, minute = 0, 0
+    if time_hint:
+        time_match = re.search(r"T(\d{2}):(\d{2})", time_hint)
+        if time_match:
+            hour, minute = int(time_match.group(1)), int(time_match.group(2))
+
+    return f"{next_date.isoformat()} {hour:02d}:{minute:02d}"
+
+
 def generate_dothebay_urls(days_ahead: int = SCRAPE_DAYS_AHEAD) -> List[str]:
     base_url = "https://www.dothebay.com/events"
     today = date.today()
@@ -286,6 +344,15 @@ async def scrape_events_from_dothebay() -> List[dict]:
 
                 images = [{"url": image_url}] if image_url else []
 
+                # Weekly recurring events (e.g. /events/weekly/sun/...): the scraped
+                # startDate is the original listing date, not the next occurrence
+                # (often stale/in the past), so recompute the date ourselves and
+                # keep the recurrence label separately for display.
+                weekly_day = weekly_event_day(event_url)
+                recurrence = f"Every {weekly_day}" if weekly_day else None
+                if weekly_day:
+                    datetime_str = next_weekly_occurrence(weekly_day, start_date)
+
                 for cls in classes:
                     if cls.startswith("ds-event-category-"):
                         category = cls.replace("ds-event-category-", "")
@@ -302,7 +369,8 @@ async def scrape_events_from_dothebay() -> List[dict]:
                             "url": event_url,
                             "categories": [category] if category else None,
                             "source": "dothebay.com",
-                            "images": images
+                            "images": images,
+                            "recurrence": recurrence,
                         }
                     )
 

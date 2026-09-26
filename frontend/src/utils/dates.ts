@@ -2,14 +2,39 @@ import type { EventFilters } from '../types/event'
 
 export function parseEventDateTime(datetime?: string | null): Date | null {
   if (!datetime) return null
-  const normalized = datetime.replace(/([+-]\d{4})$/, '$1:00')
+  const normalized = datetime.replace(/([+-]\d{2})(\d{2})$/, '$1:$2')
   const d = new Date(normalized)
   return Number.isNaN(d.getTime()) ? null : d
 }
 
-export function formatEventDate(datetime?: string | null): string {
+const WEEKLY_EVENT_DAYS: Record<string, string> = {
+  sun: 'Sunday',
+  mon: 'Monday',
+  tue: 'Tuesday',
+  wed: 'Wednesday',
+  thu: 'Thursday',
+  fri: 'Friday',
+  sat: 'Saturday',
+}
+
+/** dothebay recurring-event URLs look like dothebay.com/events/weekly/sun/some-slug */
+export function weeklyEventDay(url?: string | null): string | null {
+  if (!url) return null
+  const match = url.match(/\/events\/weekly\/(sun|mon|tue|wed|thu|fri|sat)\//i)
+  return match ? WEEKLY_EVENT_DAYS[match[1].toLowerCase()] : null
+}
+
+export function formatEventDate(
+  datetime?: string | null,
+  url?: string | null,
+  recurrence?: string | null,
+): string {
+  if (recurrence) return recurrence
   const d = parseEventDateTime(datetime)
-  if (!d) return 'Date TBA'
+  if (!d) {
+    const day = weeklyEventDay(url)
+    return day ? `Every ${day}` : 'Date TBA'
+  }
   return d.toLocaleDateString('en-US', {
     weekday: 'short',
     month: 'short',

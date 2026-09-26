@@ -25,6 +25,7 @@ def _event_row_to_dict(row: Any) -> dict:
         "categories": row.get("categories"),
         "source": row.get("source"),
         "images": row.get("images"),
+        "recurrence": row.get("recurrence"),
     }
 
 
@@ -84,7 +85,7 @@ async def _build_itinerary_detail(
         """
         SELECT
             e.id, e.title, e.datetime, e.venue, e.location, e.latlong,
-            e.url, e.description, e.categories, e.source, e.images
+            e.url, e.description, e.categories, e.source, e.images, e.recurrence
         FROM itinerary_events ie
         JOIN events e ON e.id = ie.event_id
         WHERE ie.itinerary_id = $1

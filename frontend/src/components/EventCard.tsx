@@ -75,7 +75,7 @@ export function EventCard({
         </h3>
         {compact ? (
           <p className="event-card-meta event-card-meta--inline">
-            {formatEventDate(event.datetime)}
+            {formatEventDate(event.datetime, event.url, event.recurrence)}
             {event.datetime ? ` · ${formatEventTime(event.datetime)}` : ''}
             {sourceLabel && ` · ${sourceLabel}`}
             {eventUrl && (
@@ -96,10 +96,11 @@ export function EventCard({
           </p>
         ) : (
           <>
-            <p className="event-card-meta">{formatEventDate(event.datetime)}</p>
+            <p className="event-card-meta">{formatEventDate(event.datetime, event.url, event.recurrence)}</p>
             {event.datetime && <p className="event-card-meta">{formatEventTime(event.datetime)}</p>}
             <p className="event-card-meta">{location}</p>
-            
+            {sourceLabel && <p className="event-card-source">{sourceLabel}</p>}
+
             {eventUrl && (
               <a
                 href={eventUrl}

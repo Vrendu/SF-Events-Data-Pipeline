@@ -95,7 +95,7 @@ export function AddToItineraryModal({
         <p className="itinerary-modal__event">
           <strong>{event.title}</strong>
           <span>
-            {formatEventDate(event.datetime)}
+            {formatEventDate(event.datetime, event.url, event.recurrence)}
             {event.datetime ? ` · ${formatEventTime(event.datetime)}` : ''}
           </span>
         </p>

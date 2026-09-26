@@ -195,6 +195,7 @@ class Event(BaseModel):
     categories: Optional[List[str]] = None
     source: Optional[str] = None
     images: Optional[List[dict]] = None
+    recurrence: Optional[str] = None
 
 
 _ISO_DATE_RE = re.compile(r"^\d{4}-\d{2}-\d{2}$")
@@ -222,6 +223,7 @@ def _event_row_to_out(row: Any) -> dict:
         "categories": row.get("categories"),
         "source": row.get("source"),
         "images": row.get("images"),
+        "recurrence": row.get("recurrence"),
     }
 
 
@@ -260,7 +262,8 @@ async def init_db():
                 url TEXT,
                 description TEXT,
                 categories TEXT[],
-                source TEXT
+                source TEXT,
+                recurrence TEXT
             )
             """)
 
@@ -284,6 +287,18 @@ async def init_db():
                     WHERE table_name='events' AND column_name='images'
                 ) THEN
                     ALTER TABLE events ADD COLUMN images JSONB;
+                END IF;
+            END $$;
+            """)
+
+        await conn.execute("""
+            DO $$
+            BEGIN
+                IF NOT EXISTS (
+                    SELECT 1 FROM information_schema.columns
+                    WHERE table_name='events' AND column_name='recurrence'
+                ) THEN
+                    ALTER TABLE events ADD COLUMN recurrence TEXT;
                 END IF;
             END $$;
             """)
@@ -491,6 +506,7 @@ async def _upsert_event_row(
     description = _optional_text(event.get("description"))
     images = event.get("images") or None
     images_json = json.dumps(images) if images else None
+    recurrence = _optional_text(event.get("recurrence"))
 
     existing_id = await _find_existing_event_id(conn, title, venue, source)
 
@@ -509,7 +525,8 @@ async def _upsert_event_row(
                         COALESCE(events.categories, '{}'::text[]) || COALESCE($7::text[], '{}'::text[])
                     )
                 ),
-                images = COALESCE($8::jsonb, events.images)
+                images = COALESCE($8::jsonb, events.images),
+                recurrence = $9
             WHERE id = $1
             RETURNING id
             """,
@@ -521,6 +538,7 @@ async def _upsert_event_row(
             description,
             categories,
             images_json,
+            recurrence,
         )
         if row is None:
             raise RuntimeError(f"Failed to update event id={existing_id}")
@@ -530,11 +548,11 @@ async def _upsert_event_row(
         """
         INSERT INTO events (
             id, title, datetime, venue, location, latlong,
-            url, description, categories, source, images
+            url, description, categories, source, images, recurrence
         )
         VALUES (
             COALESCE($1::int, nextval(pg_get_serial_sequence('events', 'id'))::int),
-            $2, $3, $4, $5, $6, $7, $8, $9, $10, $11::jsonb
+            $2, $3, $4, $5, $6, $7, $8, $9, $10, $11::jsonb, $12
         )
         RETURNING id
         """,
@@ -549,6 +567,7 @@ async def _upsert_event_row(
         categories,
         source,
         images_json,
+        recurrence,
     )
     if row is None:
         raise RuntimeError("Failed to insert event")
@@ -893,7 +912,8 @@ async def list_events(
         description,
         categories,
         source,
-        images
+        images,
+        recurrence
     """
 
     base_from = f"FROM events WHERE {where_sql}"
@@ -977,7 +997,7 @@ async def get_event(event_id: int):
         row = await conn.fetchrow(
             """
             SELECT
-                id, title, datetime, venue, location, latlong, url, description, categories, source, images
+                id, title, datetime, venue, location, latlong, url, description, categories, source, images, recurrence
             FROM events
             WHERE id = $1
             """,

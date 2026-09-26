@@ -19,6 +19,7 @@ export interface Event {
   categories?: string[]
   source?: string
   images?: EventImage[]
+  recurrence?: string
 }
 
 export type EventCategory =

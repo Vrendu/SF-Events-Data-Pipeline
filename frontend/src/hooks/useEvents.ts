@@ -70,9 +70,14 @@ export function useEvents(filters: EventFilters) {
   }, [loaded])
 
   const filtered = useMemo(() => {
+    const today = toIsoDate(new Date())
     return allEvents.filter((e) => {
+      const d = eventIsoDate(e)
+      // Never show events whose day has already passed — weekly recurring
+      // events always resolve to their next occurrence, so this only ever
+      // drops genuinely stale one-off events.
+      if (d && d < today) return false
       if (filters.onDate) {
-        const d = eventIsoDate(e)
         if (!d || d !== filters.onDate) return false
       }
       if (!eventMatchesCategories(e, filters.categories)) return false

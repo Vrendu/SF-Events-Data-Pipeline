@@ -252,7 +252,7 @@ export function DashboardPage({
                             <div>
                               <strong>{ev.title}</strong>
                               <span>
-                                {formatEventDate(ev.datetime)}
+                                {formatEventDate(ev.datetime, ev.url, ev.recurrence)}
                                 {ev.datetime ? ` · ${formatEventTime(ev.datetime)}` : ''}
                               </span>
                               <span>{ev.venue || ev.location || ''}</span>
@@ -323,7 +323,7 @@ export function DashboardPage({
                         )}
                       </strong>
                       <span>
-                        {formatEventDate(ev.datetime)}
+                        {formatEventDate(ev.datetime, ev.url, ev.recurrence)}
                         {ev.datetime ? ` · ${formatEventTime(ev.datetime)}` : ''}
                       </span>
                       <span>{ev.venue || ev.location || ''}</span>

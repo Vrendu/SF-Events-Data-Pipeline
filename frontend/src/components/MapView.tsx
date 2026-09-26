@@ -24,9 +24,8 @@ export interface MapPin {
   sourceLabel: string
 }
 
-function formatPinWhen(datetime?: string): string {
-  if (!datetime) return 'Date TBA'
-  const date = formatEventDate(datetime)
+function formatPinWhen(datetime?: string, url?: string, recurrence?: string): string {
+  const date = formatEventDate(datetime, url, recurrence)
   const time = formatEventTime(datetime)
   return time ? `${date} · ${time}` : date
 }
@@ -60,7 +59,7 @@ export function MapView({ events, selectedEventId, onSelectEvent, listExpanded }
         title: e.title,
         label: String(n).padStart(2, '0'),
         venue: e.venue || e.location || '',
-        when: formatPinWhen(e.datetime),
+        when: formatPinWhen(e.datetime, e.url, e.recurrence),
         sourceLabel: formatEventSource(e.source) ?? '',
       })
     }

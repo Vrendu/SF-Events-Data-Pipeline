@@ -25,6 +25,7 @@ def _event_row_to_dict(row: Any) -> dict:
         "categories": row.get("categories"),
         "source": row.get("source"),
         "images": row.get("images"),
+        "recurrence": row.get("recurrence"),
     }
 
 
@@ -45,7 +46,7 @@ def create_favorites_router(
             """
             SELECT
                 e.id, e.title, e.datetime, e.venue, e.location, e.latlong,
-                e.url, e.description, e.categories, e.source, e.images
+                e.url, e.description, e.categories, e.source, e.images, e.recurrence
             FROM user_favorites uf
             JOIN events e ON e.id = uf.event_id
             WHERE uf.user_id = $1
