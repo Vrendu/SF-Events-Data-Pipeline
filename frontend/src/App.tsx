@@ -65,6 +65,14 @@ export default function App() {
     setAppliedFilters(next)
   }, [])
 
+  const toggleRecurringOnly = useCallback(() => {
+    setAppliedFilters((prev) => {
+      const next = { ...prev, recurringOnly: !prev.recurringOnly }
+      setFilters(next)
+      return next
+    })
+  }, [])
+
   const handleToggleFavorite = useCallback(
     (id: number) => {
       void favoritesApi.toggle(id)
@@ -202,6 +210,7 @@ export default function App() {
             loading={loading}
             onOpenModal={openModal}
             onClearFilters={clearFilters}
+            onToggleRecurringOnly={toggleRecurringOnly}
             onToggleFavorite={handleToggleFavorite}
             onAddToItinerary={setItineraryEvent}
             onSelectEvent={setSelectedEventId}

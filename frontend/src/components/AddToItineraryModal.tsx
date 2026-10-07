@@ -2,7 +2,7 @@ import { useEffect, useState, type FormEvent } from 'react'
 import { Check, Plus } from 'lucide-react'
 import type { Event } from '../types/event'
 import type { Itinerary } from '../types/itinerary'
-import { formatEventDate, formatEventTime } from '../utils/dates'
+import { formatEventWhen } from '../utils/dates'
 
 interface AddToItineraryModalProps {
   event: Event
@@ -95,8 +95,7 @@ export function AddToItineraryModal({
         <p className="itinerary-modal__event">
           <strong>{event.title}</strong>
           <span>
-            {formatEventDate(event.datetime, event.url, event.recurrence)}
-            {event.datetime ? ` · ${formatEventTime(event.datetime)}` : ''}
+            {formatEventWhen(event.datetime, event.url, event.recurrence)}
           </span>
         </p>
 

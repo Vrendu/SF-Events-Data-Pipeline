@@ -52,6 +52,23 @@ export function formatEventTime(datetime?: string | null): string {
   })
 }
 
+/**
+ * Combined "when" string for an event: the recurrence label (e.g. "Every
+ * Sunday") in place of date + time when the event is recurring, otherwise
+ * "date · time". `recurrence` is a generic field any source can set — it
+ * isn't dothebay-specific — this is just the one place that honors it.
+ */
+export function formatEventWhen(
+  datetime?: string | null,
+  url?: string | null,
+  recurrence?: string | null,
+): string {
+  const date = formatEventDate(datetime, url, recurrence)
+  if (recurrence) return date
+  const time = formatEventTime(datetime)
+  return time ? `${date} · ${time}` : date
+}
+
 export function toIsoDate(d: Date): string {
   const y = d.getFullYear()
   const m = String(d.getMonth() + 1).padStart(2, '0')
@@ -110,6 +127,7 @@ export function defaultEventFilters(): EventFilters {
     categories: [],
     onDate: toIsoDate(new Date()),
     timeOfDay: 'all',
+    recurringOnly: false,
   }
 }
 
@@ -119,5 +137,21 @@ export function clearedEventFilters(): EventFilters {
     categories: [],
     onDate: null,
     timeOfDay: 'all',
+    recurringOnly: false,
   }
+}
+
+/** "Every Sunday" -> "Sunday" (or null if `recurrence` isn't in that shape). */
+export function recurrenceWeekday(recurrence?: string | null): string | null {
+  if (!recurrence) return null
+  const match = recurrence.match(/^Every (\w+)$/i)
+  return match ? match[1] : null
+}
+
+/** True if a recurring event's weekly pattern falls on the given calendar day (e.g. "Every Sunday" matches any Sunday, not just its stored next-occurrence date). */
+export function recurrenceMatchesDate(recurrence: string | null | undefined, isoDate: string): boolean {
+  const weekday = recurrenceWeekday(recurrence)
+  if (!weekday) return false
+  const dayName = parseIsoDateLocal(isoDate).toLocaleDateString('en-US', { weekday: 'long' })
+  return dayName.toLowerCase() === weekday.toLowerCase()
 }

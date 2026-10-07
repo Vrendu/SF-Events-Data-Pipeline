@@ -1,7 +1,7 @@
 import type { MouseEvent } from 'react'
 import { CalendarPlus, ExternalLink, Heart } from 'lucide-react'
 import type { Event } from '../types/event'
-import { formatEventDate, formatEventTime } from '../utils/dates'
+import { formatEventDate, formatEventTime, formatEventWhen } from '../utils/dates'
 import { pickThumbnailImage } from '../utils/eventImage'
 import { formatEventSource } from '../utils/source'
 
@@ -75,8 +75,7 @@ export function EventCard({
         </h3>
         {compact ? (
           <p className="event-card-meta event-card-meta--inline">
-            {formatEventDate(event.datetime, event.url, event.recurrence)}
-            {event.datetime ? ` · ${formatEventTime(event.datetime)}` : ''}
+            {formatEventWhen(event.datetime, event.url, event.recurrence)}
             {sourceLabel && ` · ${sourceLabel}`}
             {eventUrl && (
               <>
@@ -97,7 +96,9 @@ export function EventCard({
         ) : (
           <>
             <p className="event-card-meta">{formatEventDate(event.datetime, event.url, event.recurrence)}</p>
-            {event.datetime && <p className="event-card-meta">{formatEventTime(event.datetime)}</p>}
+            {!event.recurrence && event.datetime && (
+              <p className="event-card-meta">{formatEventTime(event.datetime)}</p>
+            )}
             <p className="event-card-meta">{location}</p>
             {sourceLabel && <p className="event-card-source">{sourceLabel}</p>}
 

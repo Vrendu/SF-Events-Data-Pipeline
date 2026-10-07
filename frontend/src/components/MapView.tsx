@@ -3,7 +3,7 @@ import Map, { Marker, type MapRef } from 'react-map-gl/mapbox'
 import 'mapbox-gl/dist/mapbox-gl.css'
 import { getMapboxAccessToken } from '../config/env'
 import type { Event } from '../types/event'
-import { formatEventDate, formatEventTime } from '../utils/dates'
+import { formatEventWhen } from '../utils/dates'
 import { MAP_BOUNDS, parseLatLong } from '../utils/geo'
 import { formatEventSource } from '../utils/source'
 
@@ -22,12 +22,6 @@ export interface MapPin {
   venue: string
   when: string
   sourceLabel: string
-}
-
-function formatPinWhen(datetime?: string, url?: string, recurrence?: string): string {
-  const date = formatEventDate(datetime, url, recurrence)
-  const time = formatEventTime(datetime)
-  return time ? `${date} · ${time}` : date
 }
 
 export interface MapViewProps {
@@ -59,7 +53,7 @@ export function MapView({ events, selectedEventId, onSelectEvent, listExpanded }
         title: e.title,
         label: String(n).padStart(2, '0'),
         venue: e.venue || e.location || '',
-        when: formatPinWhen(e.datetime, e.url, e.recurrence),
+        when: formatEventWhen(e.datetime, e.url, e.recurrence),
         sourceLabel: formatEventSource(e.source) ?? '',
       })
     }

@@ -40,9 +40,11 @@ function parseStored(raw: string): EventFilters {
     timeOfDay = rec.timeOfDay as TimeOfDay
   }
 
+  const recurringOnly = typeof rec.recurringOnly === 'boolean' ? rec.recurringOnly : defaults.recurringOnly
+
   const savedAt = typeof rec.savedAt === 'string' && isIsoDate(rec.savedAt) ? rec.savedAt : null
 
-  return normalizeOnDate({ categories, onDate, timeOfDay }, savedAt)
+  return normalizeOnDate({ categories, onDate, timeOfDay, recurringOnly }, savedAt)
 }
 
 /**

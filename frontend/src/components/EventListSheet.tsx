@@ -13,6 +13,7 @@ interface EventListSheetProps {
   loading: boolean
   onOpenModal: (modal: FilterModal) => void
   onClearFilters: () => void
+  onToggleRecurringOnly: () => void
   onToggleFavorite: (id: number) => void
   onAddToItinerary?: (event: Event) => void
   onSelectEvent: (id: number) => void
@@ -29,12 +30,16 @@ export function EventListSheet({
   loading,
   onOpenModal,
   onClearFilters,
+  onToggleRecurringOnly,
   onToggleFavorite,
   onAddToItinerary,
   onSelectEvent,
 }: EventListSheetProps) {
   const hasFilters =
-    filters.categories.length > 0 || filters.onDate != null || filters.timeOfDay !== 'all'
+    filters.categories.length > 0 ||
+    filters.onDate != null ||
+    filters.timeOfDay !== 'all' ||
+    filters.recurringOnly
 
   return (
     <section
@@ -53,7 +58,11 @@ export function EventListSheet({
 
       {expanded ? (
         <>
-          <FilterBar filters={filters} onOpenModal={onOpenModal} />
+          <FilterBar
+            filters={filters}
+            onOpenModal={onOpenModal}
+            onToggleRecurringOnly={onToggleRecurringOnly}
+          />
           <div className="results-header">
             <span className="results-count">
               {loading ? 'Loading…' : `${events.length} Event${events.length === 1 ? '' : 's'} to plot`}

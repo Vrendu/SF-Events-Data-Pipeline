@@ -128,7 +128,55 @@ async def scrape_events_from_warfield() -> List[dict]:
     return events
 
 
+def _funcheap_card_image(card) -> Optional[str]:
+    """The real image URL only exists inside <noscript> — the visible <img> is
+    a lazy-load placeholder (base64 SVG) that the shortpixel plugin swaps out
+    client-side via JS, which this scraper never runs."""
+    noscript_el = card.select_one("noscript")
+    if not noscript_el:
+        return None
+    inner = BeautifulSoup(noscript_el.decode_contents(), "html.parser")
+    img_el = inner.find("img")
+    return img_el.get("src") if img_el else None
+
+
+def _funcheap_card_venue(meta_el) -> Optional[str]:
+    """The venue is the one direct-child <span> with no class — siblings are
+    the (classed) start/end time spans and the cost span/tooltip."""
+    if not meta_el:
+        return None
+    location_span = next(
+        (s for s in meta_el.find_all("span", recursive=False) if not s.get("class")),
+        None,
+    )
+    return location_span.get_text(strip=True) if location_span else None
+
+
+# Despite the subdomain, sf.funcheap.com also covers nearby cities — but only
+# ever calls them out by name (in the venue or title) when they're NOT San
+# Francisco, e.g. "...in North Berkeley" or "Oakland's Mezcal & Mole...".
+# Absent one of those names, San Francisco is the correct default.
+_FUNCHEAP_OTHER_CITIES = ["Oakland", "Alameda", "Berkeley"]
+
+
+def _funcheap_city(venue: Optional[str], title: Optional[str]) -> str:
+    haystack = f"{venue or ''} {title or ''}".lower()
+    for city in _FUNCHEAP_OTHER_CITIES:
+        if city.lower() in haystack:
+            return city
+    return "San Francisco"
+
+
 async def scrape_events_from_funcheap(max_pages: int = 5) -> List[dict]:
+    """Only the "featured card" listings (Format A) are normalized here.
+
+    The denser table-row listings (Format B — ~100/page) only expose a bare
+    time-of-day with no venue at all (the date itself has to be inferred from
+    a preceding section header, and some sections list a handful of different
+    future dates rather than times). Without a venue/location they'd never
+    pass the app's city filter or get a map pin anyway, so they're skipped
+    rather than inserted as effectively-invisible rows.
+    """
     print(f"🕷️ Starting Funcheap scrape across up to {max_pages} pages")
     events = []
 
@@ -148,48 +196,37 @@ async def scrape_events_from_funcheap(max_pages: int = 5) -> List[dict]:
 
             soup = BeautifulSoup(response.content, "html.parser")
 
-            # -------- FORMAT A: Featured card events --------
-            for event in soup.select("div.post.type-post"):
-                title_el = event.select_one("div.title.entry-title")
-                meta_el = event.select_one("div.meta.date-time")
-                link_el = event.select_one("a")
+            for card in soup.select("div.post.type-post"):
+                title_el = card.select_one("div.title.entry-title")
+                meta_el = card.select_one("div.meta.date-time")
+                link_el = card.select_one("a")
 
                 title = title_el.get_text(strip=True) if title_el else None
                 start_dt = meta_el.get("data-event-date") if meta_el else None
                 end_dt = meta_el.get("data-event-date-end") if meta_el else None
-                event_url = link_el["href"] if link_el else None
+                event_url = link_el["href"] if link_el and link_el.get("href") else None
+                venue = _funcheap_card_venue(meta_el)
+                image_url = _funcheap_card_image(card)
+                city = _funcheap_city(venue, title)
 
                 if title and event_in_scrape_horizon(start_dt or end_dt):
                     events.append(
                         {
                             "title": title,
-                            "start_datetime": start_dt,
-                            "end_datetime": end_dt,
+                            "datetime": start_dt,
+                            "venue": venue,
+                            # The venue text (e.g. "Great Lawn, Yerba Buena
+                            # Gardens") never includes a city — append the one
+                            # we detected so this passes the app's city filter
+                            # and geocodes to the right place.
+                            "location": f"{venue}, {city}, CA" if venue else f"{city}, CA",
+                            "latlong": None,
                             "url": event_url,
+                            "categories": None,
                             "source": "sf.funcheap.com",
+                            "images": [{"url": image_url}] if image_url else [],
                         }
                     )
-
-            # -------- FORMAT B: Table row events --------
-            for row in soup.select("tr.post"):
-                time_el = row.select_one("td:first-child")
-                title_el = row.select_one("span.title2.entry-title a")
-
-                if not title_el:
-                    continue
-
-                title = title_el.get_text(strip=True)
-                event_url = title_el["href"]
-                time = time_el.get_text(strip=True) if time_el else None
-
-                events.append(
-                    {
-                        "title": title,
-                        "time": time,
-                        "url": event_url,
-                        "source": "sf.funcheap.com",
-                    }
-                )
 
         except Exception as e:
             print(f"Error on page {page_num}: {e}")

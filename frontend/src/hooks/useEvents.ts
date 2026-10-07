@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import { fetchEvents } from '../api/events'
 import type { Event, EventCategory, EventFilters } from '../types/event'
-import { matchesTimeOfDay, toIsoDate } from '../utils/dates'
+import { matchesTimeOfDay, recurrenceMatchesDate, toIsoDate } from '../utils/dates'
 import { eventIsoDate } from '../utils/eventCache'
 import {
   clearEventsCache,
@@ -73,18 +73,22 @@ export function useEvents(filters: EventFilters) {
     const today = toIsoDate(new Date())
     return allEvents.filter((e) => {
       const d = eventIsoDate(e)
-      // Never show events whose day has already passed — weekly recurring
-      // events always resolve to their next occurrence, so this only ever
-      // drops genuinely stale one-off events.
-      if (d && d < today) return false
+      // Never show one-off events whose day has already passed. Recurring
+      // events are exempt: their stored date is just the next occurrence as
+      // of the last scrape and can go stale between scrapes, but the event
+      // itself never actually becomes "past".
+      if (d && d < today && !e.recurrence) return false
       if (filters.onDate) {
-        if (!d || d !== filters.onDate) return false
+        const matchesExactDate = d === filters.onDate
+        const matchesRecurrence = Boolean(e.recurrence) && recurrenceMatchesDate(e.recurrence, filters.onDate)
+        if (!matchesExactDate && !matchesRecurrence) return false
       }
+      if (filters.recurringOnly && !e.recurrence) return false
       if (!eventMatchesCategories(e, filters.categories)) return false
       if (!matchesTimeOfDay(e.datetime, filters.timeOfDay)) return false
       return true
     })
-  }, [allEvents, filters.onDate, filters.categories, filters.timeOfDay])
+  }, [allEvents, filters.onDate, filters.categories, filters.timeOfDay, filters.recurringOnly])
 
   const loading = allEvents.length === 0 && fetching
 

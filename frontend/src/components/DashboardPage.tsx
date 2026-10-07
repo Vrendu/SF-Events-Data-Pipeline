@@ -4,7 +4,7 @@ import type { Event } from '../types/event'
 import { ConfirmModal } from './ConfirmModal'
 import type { User } from '../types/user'
 import type { Itinerary, ItineraryDetail } from '../types/itinerary'
-import { formatEventDate, formatEventTime } from '../utils/dates'
+import { formatEventWhen } from '../utils/dates'
 import { formatEventSource } from '../utils/source'
 
 type DashboardView = 'itineraries' | 'favorites'
@@ -252,8 +252,7 @@ export function DashboardPage({
                             <div>
                               <strong>{ev.title}</strong>
                               <span>
-                                {formatEventDate(ev.datetime, ev.url, ev.recurrence)}
-                                {ev.datetime ? ` · ${formatEventTime(ev.datetime)}` : ''}
+                                {formatEventWhen(ev.datetime, ev.url, ev.recurrence)}
                               </span>
                               <span>{ev.venue || ev.location || ''}</span>
                               {sourceLabel && (
@@ -323,8 +322,7 @@ export function DashboardPage({
                         )}
                       </strong>
                       <span>
-                        {formatEventDate(ev.datetime, ev.url, ev.recurrence)}
-                        {ev.datetime ? ` · ${formatEventTime(ev.datetime)}` : ''}
+                        {formatEventWhen(ev.datetime, ev.url, ev.recurrence)}
                       </span>
                       <span>{ev.venue || ev.location || ''}</span>
                       {sourceLabel && (

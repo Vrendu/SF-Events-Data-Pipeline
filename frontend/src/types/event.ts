@@ -45,4 +45,5 @@ export interface EventFilters {
   categories: EventCategory[]
   onDate: string | null
   timeOfDay: 'all' | 'morning' | 'afternoon' | 'evening' | 'night'
+  recurringOnly: boolean
 }

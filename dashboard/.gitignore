@@ -1,3 +1,6 @@
 node_modules/
 dist/
 .env
+
+# Local-only QA tool (see server/qa/) — never pushed to main.
+server/qa/

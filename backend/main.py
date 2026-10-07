@@ -182,8 +182,6 @@ class ScrapeRequest(BaseModel):
 class Event(BaseModel):
     """Canonical event shape — used everywhere an event crosses the API boundary."""
 
-    # Optional: `/scrape_events_funcheap` returns events before they're written
-    # to (and assigned an id by) the DB. Every other endpoint always sets it.
     id: Optional[int] = None
     title: str
     datetime: Optional[str] = None
@@ -705,7 +703,7 @@ async def scrape_events_warfield():
 )
 async def scrape_events_funcheap():
     response = await scrape_events_from_funcheap()
-    # await populate_database(response)
+    await populate_database(response)
     return response
 
 

@@ -1,4 +1,4 @@
-import { ChevronDown, SlidersHorizontal } from 'lucide-react'
+import { ChevronDown, Repeat, SlidersHorizontal } from 'lucide-react'
 import { formatFilterDate } from '../utils/dates'
 import type { EventCategory, EventFilters } from '../types/event'
 import { EVENT_CATEGORIES } from '../types/event'
@@ -9,6 +9,7 @@ export type FilterModal = 'category' | 'date' | 'time' | null
 interface FilterBarProps {
   filters: EventFilters
   onOpenModal: (modal: FilterModal) => void
+  onToggleRecurringOnly: () => void
 }
 
 function categoryLabel(categories: EventCategory[]): string {
@@ -19,7 +20,7 @@ function categoryLabel(categories: EventCategory[]): string {
   return `${categories.length} types`
 }
 
-export function FilterBar({ filters, onOpenModal }: FilterBarProps) {
+export function FilterBar({ filters, onOpenModal, onToggleRecurringOnly }: FilterBarProps) {
   const timeLabel =
     TIME_OPTIONS.find((t) => t.id === filters.timeOfDay)?.label ?? 'Time'
 
@@ -56,6 +57,15 @@ export function FilterBar({ filters, onOpenModal }: FilterBarProps) {
       >
         {filters.timeOfDay === 'all' ? 'Time' : timeLabel}
         <ChevronDown size={16} strokeWidth={2.2} />
+      </button>
+      <button
+        type="button"
+        className={`filter-pill ${filters.recurringOnly ? 'is-active' : ''}`}
+        aria-pressed={filters.recurringOnly}
+        onClick={onToggleRecurringOnly}
+      >
+        <Repeat size={16} strokeWidth={2.2} />
+        Recurring
       </button>
     </div>
   )
